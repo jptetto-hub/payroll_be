@@ -1,0 +1,19 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const client_1 = require("@prisma/client");
+const payroll_controller_1 = require("./payroll.controller");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const rbac_middleware_1 = require("../../middlewares/rbac.middleware");
+const validate_middleware_1 = require("../../middlewares/validate.middleware");
+const payroll_validator_1 = require("./payroll.validator");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authMiddleware);
+router.post("/generate", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(payroll_validator_1.generatePayrollSchema), payroll_controller_1.PayrollController.generate);
+router.get("/", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN, client_1.Role.USER), payroll_controller_1.PayrollController.list);
+router.get("/employee/:employeeId", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), payroll_controller_1.PayrollController.listByEmployee);
+router.post("/:id/recalculate", (0, rbac_middleware_1.allowRoles)(client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(payroll_validator_1.recalculatePayrollSchema), payroll_controller_1.PayrollController.recalculate);
+router.delete("/:id", (0, rbac_middleware_1.allowRoles)(client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(payroll_validator_1.deletePayrollSchema), payroll_controller_1.PayrollController.delete);
+router.get("/:id", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), payroll_controller_1.PayrollController.getById);
+exports.default = router;
+//# sourceMappingURL=payroll.routes.js.map

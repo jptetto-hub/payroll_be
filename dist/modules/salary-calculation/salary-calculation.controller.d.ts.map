@@ -1,0 +1,1 @@
+{"version":3,"file":"salary-calculation.controller.d.ts","sourceRoot":"","sources":["../../../src/modules/salary-calculation/salary-calculation.controller.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,OAAO,EAAE,QAAQ,EAAE,YAAY,EAAE,MAAM,SAAS,CAAC;AAG1D,qBAAa,2BAA2B;WACzB,OAAO,CAAC,GAAG,EAAE,OAAO,EAAE,GAAG,EAAE,QAAQ,EAAE,IAAI,EAAE,YAAY;CAarE"}

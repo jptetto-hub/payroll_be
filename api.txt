@@ -1,0 +1,47 @@
+POST /api/auth/login
+GET  /api/auth/me
+
+GET  /api/admin/test        ADMIN + SUPER_ADMIN
+GET  /api/super-admin/test  SUPER_ADMIN only
+
+
+
+//Employee api
+
+POST   /api/employees
+GET    /api/employees
+GET    /api/employees/:id
+PATCH  /api/employees/:id
+PATCH  /api/employees/:id/status
+PATCH  /api/employees/:id/role
+
+//Salary History
+
+POST /api/salary-history
+GET  /api/salary-history/employee/:employeeId
+GET  /api/salary-history/employee/:employeeId/current
+GET  /api/salary-history/employee/:employeeId/resolve?date=2026-05-01
+
+//attendance module
+
+POST   /api/attendance
+POST   /api/attendance/bulk
+GET    /api/attendance/employee/:employeeId
+GET    /api/attendance/employee/:employeeId/range?from=2026-05-01&to=2026-05-31
+PATCH  /api/attendance/:id
+DELETE /api/attendance/:id
+
+//attendance approval work flow
+
+POST  /api/attendance-requests
+GET   /api/attendance-requests/my
+GET   /api/attendance-requests/pending
+PATCH /api/attendance-requests/:id/approve
+PATCH /api/attendance-requests/:id/reject
+
+//audit logi
+GET /api/audit-logs?page=1&limit=10
+GET /api/audit-logs?module=PAYROLL
+GET /api/audit-logs?action=PAYROLL_GENERATE
+GET /api/audit-logs/user/USER_ID
+GET /api/audit-logs/AUDIT_LOG_ID
