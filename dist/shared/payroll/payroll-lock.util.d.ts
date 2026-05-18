@@ -8,6 +8,10 @@ export declare const findActivePayrollForDate: (employeeId: string, date: Date) 
     periodStart: Date;
     periodEnd: Date;
     grossSalary: import("@prisma/client-runtime-utils").Decimal;
+    standardSalary: import("@prisma/client-runtime-utils").Decimal;
+    otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+    otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+    otEarnings: import("@prisma/client-runtime-utils").Decimal;
     advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
     carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
     totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -32,6 +36,7 @@ export declare const findActivePayrollForDate: (employeeId: string, date: Date) 
     salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
     attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+    overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
 } | null>;
 export declare const findActivePayrollForCycle: ({ employeeId, cycleStartDate, cycleEndDate, }: {
     employeeId: string;
@@ -47,6 +52,10 @@ export declare const findActivePayrollForCycle: ({ employeeId, cycleStartDate, c
     periodStart: Date;
     periodEnd: Date;
     grossSalary: import("@prisma/client-runtime-utils").Decimal;
+    standardSalary: import("@prisma/client-runtime-utils").Decimal;
+    otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+    otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+    otEarnings: import("@prisma/client-runtime-utils").Decimal;
     advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
     carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
     totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -71,6 +80,7 @@ export declare const findActivePayrollForCycle: ({ employeeId, cycleStartDate, c
     salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
     attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+    overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
 } | null>;
 export declare const assertAttendanceNotLocked: (employeeId: string, date: Date) => Promise<void>;
 export declare const assertAttendanceApprovalNotLocked: (employeeId: string, date: Date) => Promise<void>;

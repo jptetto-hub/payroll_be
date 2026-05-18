@@ -241,6 +241,10 @@ export class PayrollService {
           periodEnd,
           salaryType: employee.salaryType,
           grossSalary: preview.result.grossSalary,
+          standardSalary: preview.result.standardSalary,
+          otTotalHours: preview.result.otTotalHours,
+          otHourlyRate: preview.result.otHourlyRate,
+          otEarnings: preview.result.otEarnings,
           advanceDeduction: preview.result.advanceDeduction,
           carryForwardApplied: preview.result.carryForwardApplied,
           totalDeduction: preview.result.totalDeduction,
@@ -263,6 +267,7 @@ export class PayrollService {
           salaryBreakdown: preview.salaryBreakdown,
           attendanceBreakdown: preview.attendanceSummary,
           advanceBreakdown,
+          overtimeBreakdown: preview.overtimeSummary,
         },
         include: {
           employee: {
@@ -342,6 +347,8 @@ export class PayrollService {
       employeeId: payroll.employeeId,
       payrollId: payroll.id,
       grossSalary: Number(payroll.grossSalary),
+      standardSalary: Number((payroll as any).standardSalary),
+      otEarnings: Number((payroll as any).otEarnings),
       advanceDeduction: Number(payroll.advanceDeduction),
       date: payroll.periodEnd,
     });
@@ -356,6 +363,10 @@ export class PayrollService {
           payrollId: payroll.id,
           employeeId: payroll.employeeId,
           grossSalary: payroll.grossSalary,
+          standardSalary: (payroll as any).standardSalary,
+          otTotalHours: (payroll as any).otTotalHours,
+          otHourlyRate: (payroll as any).otHourlyRate,
+          otEarnings: (payroll as any).otEarnings,
           advanceDeduction: payroll.advanceDeduction,
           carryForwardApplied: payroll.carryForwardApplied,
           totalDeduction: payroll.totalDeduction,
@@ -691,6 +702,10 @@ export class PayrollService {
         salaryType: oldPayroll.salaryType,
 
         grossSalary: preview.result.grossSalary,
+        standardSalary: preview.result.standardSalary,
+        otTotalHours: preview.result.otTotalHours,
+        otHourlyRate: preview.result.otHourlyRate,
+        otEarnings: preview.result.otEarnings,
         advanceDeduction: preview.result.advanceDeduction,
         carryForwardApplied: preview.result.carryForwardApplied,
         totalDeduction: preview.result.totalDeduction,
@@ -720,6 +735,7 @@ export class PayrollService {
         salaryBreakdown: preview.salaryBreakdown,
         attendanceBreakdown: preview.attendanceSummary,
         advanceBreakdown,
+        overtimeBreakdown: preview.overtimeSummary,
       },
     });
 

@@ -60,6 +60,52 @@ const parseOptionalDate = (value?: string) => {
   return parsed;
 };
 
+const parseOptionalDateTime = (value?: string | null) => {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date-time value");
+  }
+
+  return parsed;
+};
+
+const hasRequestedOtChange = (item: {
+  requestedCheckInTime?: string | null;
+  requestedCheckOutTime?: string | null;
+  requestedOtStartTime?: string | null;
+  requestedOtEndTime?: string | null;
+  requestedOtHours?: number | null;
+  requestedOtManualOverride?: boolean;
+}) =>
+  Boolean(
+    item.requestedCheckInTime ||
+      item.requestedCheckOutTime ||
+      item.requestedOtStartTime ||
+      item.requestedOtEndTime ||
+      item.requestedOtHours !== undefined ||
+      item.requestedOtManualOverride !== undefined,
+  );
+
+const requestHasOtChange = (request: {
+  requestedCheckInTime?: Date | null;
+  requestedCheckOutTime?: Date | null;
+  requestedOtStartTime?: Date | null;
+  requestedOtEndTime?: Date | null;
+  requestedOtHours?: unknown;
+  requestedOtManualOverride?: boolean | null;
+}) =>
+  Boolean(
+    request.requestedCheckInTime ||
+      request.requestedCheckOutTime ||
+      request.requestedOtStartTime ||
+      request.requestedOtEndTime ||
+      request.requestedOtHours !== null ||
+      request.requestedOtManualOverride,
+  );
+
 const groupByStatus = (requests: any[]) => {
   return {
     pending: requests.filter((item) => item.status === "PENDING"),
@@ -86,6 +132,13 @@ export class AttendanceRequestService {
         requestedStatus: AttendanceStatus;
         requestType: AttendanceRequestType;
         reason: string;
+        requestedCheckInTime?: string | null;
+        requestedCheckOutTime?: string | null;
+        requestedOtStartTime?: string | null;
+        requestedOtEndTime?: string | null;
+        requestedOtHours?: number | null;
+        requestedOtManualOverride?: boolean;
+        requestedOtOverrideReason?: string | null;
       }[];
     },
     currentUser: {
@@ -181,7 +234,8 @@ export class AttendanceRequestService {
 
       if (
         item.requestType === AttendanceRequestType.EDIT &&
-        existingAttendance?.status === item.requestedStatus
+        existingAttendance?.status === item.requestedStatus &&
+        !hasRequestedOtChange(item)
       ) {
         throw new Error(
           `Requested status is same as current attendance status for ${item.attendanceDate}`,
@@ -196,6 +250,13 @@ export class AttendanceRequestService {
         requestType: item.requestType,
         reason: item.reason,
         requestedById: currentUser.id,
+        requestedCheckInTime: parseOptionalDateTime(item.requestedCheckInTime),
+        requestedCheckOutTime: parseOptionalDateTime(item.requestedCheckOutTime),
+        requestedOtStartTime: parseOptionalDateTime(item.requestedOtStartTime),
+        requestedOtEndTime: parseOptionalDateTime(item.requestedOtEndTime),
+        requestedOtHours: item.requestedOtHours ?? null,
+        requestedOtManualOverride: item.requestedOtManualOverride ?? false,
+        requestedOtOverrideReason: item.requestedOtOverrideReason ?? null,
       });
     }
 
@@ -398,7 +459,8 @@ export class AttendanceRequestService {
 
       if (
         request.requestType === "EDIT" &&
-        currentAttendance?.status === request.requestedStatus
+        currentAttendance?.status === request.requestedStatus &&
+        !requestHasOtChange(request)
       ) {
         throw new Error(
           `Cannot approve because requested status is already applied for ${request.attendanceDate.toISOString().slice(0, 10)}`,
@@ -457,7 +519,8 @@ export class AttendanceRequestService {
 
     if (
       request.requestType === AttendanceRequestType.EDIT &&
-      currentAttendance?.status === request.requestedStatus
+      currentAttendance?.status === request.requestedStatus &&
+      !requestHasOtChange(request)
     ) {
       throw new Error(
         "Cannot approve because requested status is already applied",
@@ -470,6 +533,16 @@ export class AttendanceRequestService {
       employeeId: request.employeeId,
       attendanceDate: request.attendanceDate,
       requestedStatus: request.requestedStatus,
+      requestedCheckInTime: request.requestedCheckInTime,
+      requestedCheckOutTime: request.requestedCheckOutTime,
+      requestedOtStartTime: request.requestedOtStartTime,
+      requestedOtEndTime: request.requestedOtEndTime,
+      requestedOtHours:
+        request.requestedOtHours === null
+          ? null
+          : Number(request.requestedOtHours ?? 0),
+      requestedOtManualOverride: request.requestedOtManualOverride,
+      requestedOtOverrideReason: request.requestedOtOverrideReason,
     });
   }
 

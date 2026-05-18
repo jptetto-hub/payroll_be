@@ -47,6 +47,10 @@ const payrollSelect = {
     periodEnd: true,
     salaryType: true,
     grossSalary: true,
+    standardSalary: true,
+    otTotalHours: true,
+    otHourlyRate: true,
+    otEarnings: true,
     advanceDeduction: true,
     carryForwardApplied: true,
     totalDeduction: true,
@@ -92,11 +96,17 @@ class ReportsRepository {
     }
     static async attendanceReport(params) {
         const where = scopedDateWhere(params.employeeWhere, "date", params.fromDate, params.toDate);
-        const [total, present, absent, halfDay, data] = await prisma_1.prisma.$transaction([
+        const [total, present, absent, halfDay, otAggregate, data] = await prisma_1.prisma.$transaction([
             prisma_1.prisma.attendance.count({ where }),
             prisma_1.prisma.attendance.count({ where: { ...where, status: "PRESENT" } }),
             prisma_1.prisma.attendance.count({ where: { ...where, status: "ABSENT" } }),
             prisma_1.prisma.attendance.count({ where: { ...where, status: "HALF_DAY" } }),
+            prisma_1.prisma.attendance.aggregate({
+                where,
+                _sum: {
+                    otHours: true,
+                },
+            }),
             prisma_1.prisma.attendance.findMany({
                 where,
                 include: {
@@ -119,6 +129,7 @@ class ReportsRepository {
                 present,
                 absent,
                 halfDay,
+                totalOtHours: Number(otAggregate?._sum?.otHours ?? 0),
             },
             pagination: (0, pagination_util_1.buildPaginationMeta)(total, params.page, params.limit),
         };
@@ -194,6 +205,9 @@ class ReportsRepository {
                 where,
                 _sum: {
                     grossSalary: true,
+                    standardSalary: true,
+                    otTotalHours: true,
+                    otEarnings: true,
                     advanceDeduction: true,
                     carryForwardApplied: true,
                     totalDeduction: true,
@@ -214,6 +228,9 @@ class ReportsRepository {
             summary: {
                 totalEmployees: employees.length,
                 totalPayrollRecords: total,
+                totalStandardSalary: Number(aggregate._sum.standardSalary ?? 0),
+                totalOtHours: Number(aggregate._sum.otTotalHours ?? 0),
+                totalOtEarnings: Number(aggregate._sum.otEarnings ?? 0),
                 totalGrossSalary: Number(aggregate._sum.grossSalary ?? 0),
                 totalAdvanceDeduction: Number(aggregate._sum.advanceDeduction ?? 0),
                 totalCarryForwardApplied: Number(aggregate._sum.carryForwardApplied ?? 0),

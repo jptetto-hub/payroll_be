@@ -63,6 +63,10 @@ const salaryExportColumns = [
   { header: "Salary Type", key: "salaryType", width: 15 },
   { header: "Period Start", key: "periodStart", width: 15 },
   { header: "Period End", key: "periodEnd", width: 15 },
+  { header: "Standard Salary", key: "standardSalary", width: 18 },
+  { header: "OT Hours", key: "otTotalHours", width: 12 },
+  { header: "OT Hourly Rate", key: "otHourlyRate", width: 18 },
+  { header: "OT Earnings", key: "otEarnings", width: 15 },
   { header: "Gross Salary", key: "grossSalary", width: 15 },
   { header: "Advance Deduction", key: "advanceDeduction", width: 20 },
   { header: "Carry Forward Applied", key: "carryForwardApplied", width: 24 },
@@ -83,6 +87,30 @@ const salaryExportKeys = [
   "salaryType",
   "periodStart",
   "periodEnd",
+  "standardSalary",
+  "otTotalHours",
+  "otHourlyRate",
+  "otEarnings",
+  "grossSalary",
+  "advanceDeduction",
+  "carryForwardApplied",
+  "totalDeduction",
+  "rawFinalSalary",
+  "finalSalary",
+  "carryForwardDeduction",
+  "payrollStatus",
+];
+
+const allInOneExportKeys = [
+  "employeeCode",
+  "name",
+  "salaryType",
+  "periodStart",
+  "periodEnd",
+  "standardSalary",
+  "otTotalHours",
+  "otHourlyRate",
+  "otEarnings",
   "grossSalary",
   "advanceDeduction",
   "carryForwardApplied",
@@ -99,6 +127,10 @@ const formatPayrollForExport = (p: any) => ({
   salaryType: p.employee.salaryType,
   periodStart: formatDate(p.periodStart),
   periodEnd: formatDate(p.periodEnd),
+  standardSalary: Number(p.standardSalary ?? p.grossSalary),
+  otTotalHours: Number(p.otTotalHours ?? 0),
+  otHourlyRate: Number(p.otHourlyRate ?? 0),
+  otEarnings: Number(p.otEarnings ?? 0),
   grossSalary: Number(p.grossSalary),
   advanceDeduction: Number(p.advanceDeduction),
   carryForwardApplied: Number(p.carryForwardApplied),
@@ -115,6 +147,10 @@ const formatAllInOne = (p: any) => ({
   salaryType: p.employee.salaryType,
   periodStart: formatDate(p.periodStart),
   periodEnd: formatDate(p.periodEnd),
+  standardSalary: Number(p.standardSalary ?? p.grossSalary),
+  otTotalHours: Number(p.otTotalHours ?? 0),
+  otHourlyRate: Number(p.otHourlyRate ?? 0),
+  otEarnings: Number(p.otEarnings ?? 0),
   grossSalary: Number(p.grossSalary),
   advanceDeduction: Number(p.advanceDeduction),
   carryForwardApplied: Number(p.carryForwardApplied),
@@ -160,6 +196,7 @@ export class ReportsService {
       salaryType: a.employee.salaryType,
       date: formatDate(a.date),
       status: a.status,
+      otHours: Number(a.otHours ?? 0),
     }));
 
     return generateCSV(formatted, [
@@ -168,6 +205,7 @@ export class ReportsService {
       "salaryType",
       "date",
       "status",
+      "otHours",
     ]);
   }
 
@@ -240,6 +278,7 @@ export class ReportsService {
       salaryType: a.employee.salaryType,
       date: formatDate(a.date),
       status: a.status,
+      otHours: Number(a.otHours ?? 0),
     }));
 
     return generateExcelBuffer(
@@ -250,6 +289,7 @@ export class ReportsService {
         { header: "Salary Type", key: "salaryType", width: 15 },
         { header: "Date", key: "date", width: 15 },
         { header: "Status", key: "status", width: 15 },
+        { header: "OT Hours", key: "otHours", width: 12 },
       ],
       formatted,
     );
@@ -315,21 +355,10 @@ export class ReportsService {
       normalizeReportQuery(query, authUser, false),
     );
 
-    return generateCSV((result.data as any[]).map(formatAllInOne), [
-      "employeeCode",
-      "name",
-      "salaryType",
-      "periodStart",
-      "periodEnd",
-      "grossSalary",
-      "advanceDeduction",
-      "carryForwardApplied",
-      "totalDeduction",
-      "rawFinalSalary",
-      "finalSalary",
-      "carryForwardDeduction",
-      "payrollStatus",
-    ]);
+    return generateCSV(
+      (result.data as any[]).map(formatAllInOne),
+      allInOneExportKeys,
+    );
   }
 
   static async allInOneExportExcel(query: any, authUser: any) {

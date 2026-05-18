@@ -24,6 +24,66 @@ export declare class SalaryCalculationService {
             absentDays: number;
             missingDays: number;
             attendedDays: number;
+            otTotalHours: number;
+            otEarnings: number;
+            effectivePeriodStart: any;
+            effectivePeriodEnd: any;
+            joinedDuringCycle: boolean;
+        };
+        salaryBreakdown: any[];
+        advanceSummary: {
+            advances: any;
+            advanceDeduction: number;
+        };
+        carryForwardSummary: {
+            pendingCarryForwards: never[];
+            appliedCarryForwards: any;
+            carryForwardApplied: number;
+        };
+        overtimeSummary: {
+            otTotalHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
+            segments: any;
+        };
+        result: {
+            standardSalary: number;
+            grossSalary: number;
+            otTotalHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
+            advanceDeduction: number;
+            carryForwardApplied: number;
+            totalDeduction: number;
+            rawFinalSalary: number;
+            finalSalary: number;
+            carryForwardDeduction: number;
+            hasCarryForward: boolean;
+            isNegativeSalary: boolean;
+        };
+    } | {
+        employee: {
+            id: string;
+            employeeCode: string;
+            name: string;
+            salaryType: import(".prisma/client").$Enums.SalaryType;
+        };
+        period: {
+            periodStart: string;
+            periodEnd: string;
+            effectivePeriodStart: string;
+            effectivePeriodEnd: string;
+            joinedDuringCycle: boolean;
+        };
+        attendanceSummary: {
+            workingDays: number;
+            presentDays: number;
+            halfDays: number;
+            absentDays: number;
+            missingDays: number;
+            attendedDays: number;
+            otTotalHours: number;
+            otEarnings: number;
             effectivePeriodStart: string;
             effectivePeriodEnd: string;
             joinedDuringCycle: boolean;
@@ -40,6 +100,10 @@ export declare class SalaryCalculationService {
             missingDays: number;
             attendedDays: number;
             perDaySalary: number;
+            standardSalary: number;
+            otHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
             grossSalary: number;
         }[];
         advanceSummary: {
@@ -104,8 +168,25 @@ export declare class SalaryCalculationService {
             }[];
             carryForwardApplied: number;
         };
+        overtimeSummary: {
+            otTotalHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
+            segments: {
+                salaryHistoryId: string;
+                segmentStart: string;
+                segmentEnd: string;
+                otHours: number;
+                otHourlyRate: number;
+                otEarnings: number;
+            }[];
+        };
         result: {
+            standardSalary: number;
             grossSalary: number;
+            otTotalHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
             advanceDeduction: number;
             carryForwardApplied: number;
             totalDeduction: number;

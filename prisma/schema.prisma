@@ -48,6 +48,7 @@ enum PayrollStatus {
 
 enum LedgerType {
   SALARY
+  OVERTIME
   ADVANCE
   DEDUCTION
   ADJUSTMENT
@@ -147,6 +148,15 @@ model Attendance {
 
   lockedByPayrollId String?
 
+  checkInTime      DateTime?
+  checkOutTime     DateTime?
+  otStartTime      DateTime?
+  otEndTime        DateTime?
+  otHours          Decimal  @default(0) @db.Decimal(7, 2)
+  otManualOverride Boolean  @default(false)
+  otOverrideReason String?
+  otBreakdown      Json?
+
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -166,6 +176,14 @@ model AttendanceRequest {
   requestedStatus AttendanceStatus
   requestType     AttendanceRequestType
   reason          String?
+
+  requestedCheckInTime      DateTime?
+  requestedCheckOutTime     DateTime?
+  requestedOtStartTime      DateTime?
+  requestedOtEndTime        DateTime?
+  requestedOtHours          Decimal? @db.Decimal(7, 2)
+  requestedOtManualOverride Boolean  @default(false)
+  requestedOtOverrideReason String?
 
   status RequestStatus @default(PENDING)
 
@@ -222,6 +240,10 @@ model Payroll {
 
   salaryType       SalaryType
   grossSalary      Decimal    @db.Decimal(12, 2)
+  standardSalary   Decimal    @default(0) @db.Decimal(12, 2)
+  otTotalHours     Decimal    @default(0) @db.Decimal(8, 2)
+  otHourlyRate     Decimal    @default(0) @db.Decimal(12, 2)
+  otEarnings       Decimal    @default(0) @db.Decimal(12, 2)
   advanceDeduction Decimal    @default(0) @db.Decimal(12, 2)
 
   carryForwardApplied   Decimal @default(0) @db.Decimal(12, 2)
@@ -257,6 +279,7 @@ model Payroll {
   salaryBreakdown     Json
   attendanceBreakdown Json?
   advanceBreakdown    Json?
+  overtimeBreakdown   Json?
 
   employee      Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   payslips      Payslip[]
@@ -310,6 +333,11 @@ model Payslip {
   halfDays    Decimal @db.Decimal(5, 2)
 
   salaryBreakdown  Json
+  standardSalary   Decimal @default(0) @db.Decimal(12, 2)
+  otTotalHours     Decimal @default(0) @db.Decimal(8, 2)
+  otHourlyRate     Decimal @default(0) @db.Decimal(12, 2)
+  otEarnings       Decimal @default(0) @db.Decimal(12, 2)
+  overtimeBreakdown Json?
   advanceDeduction Decimal @db.Decimal(12, 2)
   finalSalary      Decimal @db.Decimal(12, 2)
 
@@ -375,6 +403,24 @@ model SystemSetting {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model WorkHourSetting {
+  id                String   @id @default(uuid())
+  workStartTime     String
+  workEndTime       String
+  standardMinutes   Int
+  effectiveFromDate DateTime
+  isActive          Boolean  @default(true)
+  note              String?
+  createdById       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([effectiveFromDate])
+  @@index([effectiveFromDate])
+  @@index([isActive])
 }
 
 model SchedulerRun {

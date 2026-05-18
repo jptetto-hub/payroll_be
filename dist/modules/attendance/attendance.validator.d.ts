@@ -1,6 +1,13 @@
 import { z } from "zod";
 export declare const createAttendanceSchema: z.ZodObject<{
     body: z.ZodObject<{
+        checkInTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        checkOutTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otStartTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otEndTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otHours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+        otManualOverride: z.ZodOptional<z.ZodBoolean>;
+        otOverrideReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
         employeeId: z.ZodString;
         date: z.ZodString;
         status: z.ZodEnum<{
@@ -13,6 +20,13 @@ export declare const createAttendanceSchema: z.ZodObject<{
 export declare const bulkAttendanceSchema: z.ZodObject<{
     body: z.ZodObject<{
         records: z.ZodArray<z.ZodObject<{
+            checkInTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            checkOutTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otStartTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otEndTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otHours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+            otManualOverride: z.ZodOptional<z.ZodBoolean>;
+            otOverrideReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
             employeeId: z.ZodString;
             date: z.ZodString;
             status: z.ZodEnum<{
@@ -25,6 +39,13 @@ export declare const bulkAttendanceSchema: z.ZodObject<{
 }, z.core.$strip>;
 export declare const updateAttendanceSchema: z.ZodObject<{
     body: z.ZodObject<{
+        checkInTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        checkOutTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otStartTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otEndTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+        otHours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+        otManualOverride: z.ZodOptional<z.ZodBoolean>;
+        otOverrideReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
         status: z.ZodEnum<{
             PRESENT: "PRESENT";
             ABSENT: "ABSENT";
@@ -42,6 +63,13 @@ export declare const rangeQuerySchema: z.ZodObject<{
 export declare const bulkUpdateAttendanceSchema: z.ZodObject<{
     body: z.ZodObject<{
         records: z.ZodArray<z.ZodObject<{
+            checkInTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            checkOutTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otStartTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otEndTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            otHours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+            otManualOverride: z.ZodOptional<z.ZodBoolean>;
+            otOverrideReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
             attendanceId: z.ZodString;
             status: z.ZodEnum<{
                 PRESENT: "PRESENT";

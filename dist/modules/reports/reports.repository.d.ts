@@ -21,6 +21,10 @@ export declare class ReportsRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -45,6 +49,7 @@ export declare class ReportsRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         }[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -57,12 +62,21 @@ export declare class ReportsRepository {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: Prisma.Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: Prisma.JsonValue | null;
         }[];
         summary: {
             totalRecords: number;
             present: number;
             absent: number;
             halfDay: number;
+            totalOtHours: number;
         };
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -106,6 +120,10 @@ export declare class ReportsRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -130,10 +148,14 @@ export declare class ReportsRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         }[];
         summary: {
             totalEmployees: number;
             totalPayrollRecords: number;
+            totalStandardSalary: number;
+            totalOtHours: number;
+            totalOtEarnings: number;
             totalGrossSalary: number;
             totalAdvanceDeduction: number;
             totalCarryForwardApplied: number;

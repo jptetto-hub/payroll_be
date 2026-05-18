@@ -1,6 +1,7 @@
 import { prisma } from "../../config/prisma";
 
 const DEFAULT_SETTINGS_ID = "default-settings";
+const db = prisma as any;
 
 export class SettingsRepository {
   static get() {
@@ -29,6 +30,67 @@ export class SettingsRepository {
         monthlyPayrollDay: data.monthlyPayrollDay ?? null,
         autoPayrollEnabled: data.autoPayrollEnabled ?? true,
       },
+    });
+  }
+
+  static listWorkHourSettings(params: { skip: number; take: number }) {
+    return prisma.$transaction([
+      db.workHourSetting.findMany({
+        skip: params.skip,
+        take: params.take,
+        orderBy: { effectiveFromDate: "desc" },
+      }),
+      db.workHourSetting.count(),
+    ]);
+  }
+
+  static findWorkHourSetting(id: string) {
+    return db.workHourSetting.findUnique({ where: { id } });
+  }
+
+  static findWorkHourSettingByEffectiveDate(effectiveFromDate: Date) {
+    return db.workHourSetting.findUnique({
+      where: { effectiveFromDate },
+    });
+  }
+
+  static createWorkHourSetting(data: {
+    workStartTime: string;
+    workEndTime: string;
+    standardMinutes: number;
+    effectiveFromDate: Date;
+    note?: string | null;
+    createdById?: string | null;
+  }) {
+    return db.workHourSetting.create({
+      data: {
+        ...data,
+        isActive: true,
+      },
+    });
+  }
+
+  static updateWorkHourSetting(
+    id: string,
+    data: {
+      workStartTime?: string;
+      workEndTime?: string;
+      standardMinutes?: number;
+      effectiveFromDate?: Date;
+      isActive?: boolean;
+      note?: string | null;
+    },
+  ) {
+    return db.workHourSetting.update({
+      where: { id },
+      data,
+    });
+  }
+
+  static deleteWorkHourSetting(id: string) {
+    return db.workHourSetting.update({
+      where: { id },
+      data: { isActive: false },
     });
   }
 }

@@ -1,4 +1,13 @@
 import { AttendanceStatus, Role } from "@prisma/client";
+type AttendanceOtInput = {
+    checkInTime?: string | Date | null;
+    checkOutTime?: string | Date | null;
+    otStartTime?: string | Date | null;
+    otEndTime?: string | Date | null;
+    otHours?: number | null;
+    otManualOverride?: boolean;
+    otOverrideReason?: string | null;
+};
 export declare class AttendanceService {
     static list(query: any, currentUserRole: Role): Promise<{
         data: ({
@@ -19,6 +28,14 @@ export declare class AttendanceService {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: import("@prisma/client-runtime-utils").Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         })[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -26,7 +43,7 @@ export declare class AttendanceService {
         employeeId: string;
         date: string;
         status: AttendanceStatus;
-    }, currentUserRole: Role): Promise<{
+    } & AttendanceOtInput, currentUserRole: Role): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.AttendanceStatus;
         createdAt: Date;
@@ -34,12 +51,20 @@ export declare class AttendanceService {
         date: Date;
         employeeId: string;
         lockedByPayrollId: string | null;
+        checkInTime: Date | null;
+        checkOutTime: Date | null;
+        otStartTime: Date | null;
+        otEndTime: Date | null;
+        otHours: import("@prisma/client-runtime-utils").Decimal;
+        otManualOverride: boolean;
+        otOverrideReason: string | null;
+        otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }>;
-    static bulkAttendance(records: {
+    static bulkAttendance(records: ({
         employeeId: string;
         date: string;
         status: AttendanceStatus;
-    }[], currentUserRole: Role): Promise<{
+    } & AttendanceOtInput)[], currentUserRole: Role): Promise<{
         createdCount: number;
         skippedCount: number;
         records: {
@@ -50,6 +75,14 @@ export declare class AttendanceService {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: import("@prisma/client-runtime-utils").Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         conflictMessage: string | null;
         conflicts: string[];
@@ -63,6 +96,14 @@ export declare class AttendanceService {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: import("@prisma/client-runtime-utils").Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -89,10 +130,20 @@ export declare class AttendanceService {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: import("@prisma/client-runtime-utils").Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
-    static updateAttendance(id: string, status: AttendanceStatus, currentUserRole: Role): Promise<{
+    static updateAttendance(id: string, data: {
+        status: AttendanceStatus;
+    } & AttendanceOtInput, currentUserRole: Role): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.AttendanceStatus;
         createdAt: Date;
@@ -100,6 +151,14 @@ export declare class AttendanceService {
         date: Date;
         employeeId: string;
         lockedByPayrollId: string | null;
+        checkInTime: Date | null;
+        checkOutTime: Date | null;
+        otStartTime: Date | null;
+        otEndTime: Date | null;
+        otHours: import("@prisma/client-runtime-utils").Decimal;
+        otManualOverride: boolean;
+        otOverrideReason: string | null;
+        otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }>;
     static deleteAttendance(id: string, currentUserRole: Role): Promise<{
         id: string;
@@ -109,12 +168,20 @@ export declare class AttendanceService {
         date: Date;
         employeeId: string;
         lockedByPayrollId: string | null;
+        checkInTime: Date | null;
+        checkOutTime: Date | null;
+        otStartTime: Date | null;
+        otEndTime: Date | null;
+        otHours: import("@prisma/client-runtime-utils").Decimal;
+        otManualOverride: boolean;
+        otOverrideReason: string | null;
+        otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }>;
-    static bulkUpdateAttendance(records: {
+    static bulkUpdateAttendance(records: ({
         attendanceId: string;
         status: AttendanceStatus;
         reason: string;
-    }[], currentUserRole: Role): Promise<{
+    } & AttendanceOtInput)[], currentUserRole: Role): Promise<{
         id: string;
         status: import(".prisma/client").$Enums.AttendanceStatus;
         createdAt: Date;
@@ -122,6 +189,14 @@ export declare class AttendanceService {
         date: Date;
         employeeId: string;
         lockedByPayrollId: string | null;
+        checkInTime: Date | null;
+        checkOutTime: Date | null;
+        otStartTime: Date | null;
+        otEndTime: Date | null;
+        otHours: import("@prisma/client-runtime-utils").Decimal;
+        otManualOverride: boolean;
+        otOverrideReason: string | null;
+        otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }[]>;
     static bulkDeleteAttendance(attendanceIds: string[], currentUserRole: Role, reason: string): Promise<{
         id: string;
@@ -131,6 +206,15 @@ export declare class AttendanceService {
         date: Date;
         employeeId: string;
         lockedByPayrollId: string | null;
+        checkInTime: Date | null;
+        checkOutTime: Date | null;
+        otStartTime: Date | null;
+        otEndTime: Date | null;
+        otHours: import("@prisma/client-runtime-utils").Decimal;
+        otManualOverride: boolean;
+        otOverrideReason: string | null;
+        otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }[]>;
 }
+export {};
 //# sourceMappingURL=attendance.service.d.ts.map

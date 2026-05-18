@@ -64,6 +64,8 @@ export class DashboardRepository {
         where,
         _sum: {
           finalSalary: true,
+          otTotalHours: true,
+          otEarnings: true,
           totalDeduction: true,
           advanceDeduction: true,
         },

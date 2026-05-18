@@ -21,6 +21,8 @@ export declare class LedgerService {
         employeeId: string;
         payrollId: string;
         grossSalary: number;
+        standardSalary?: number;
+        otEarnings?: number;
         advanceDeduction: number;
         date: Date;
     }): Promise<{
@@ -75,6 +77,10 @@ export declare class LedgerService {
                 periodStart: Date;
                 periodEnd: Date;
                 grossSalary: import("@prisma/client-runtime-utils").Decimal;
+                standardSalary: import("@prisma/client-runtime-utils").Decimal;
+                otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+                otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+                otEarnings: import("@prisma/client-runtime-utils").Decimal;
                 advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
                 carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
                 totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -99,6 +105,7 @@ export declare class LedgerService {
                 salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
                 attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
                 advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+                overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             } | null;
         } & {
             id: string;
@@ -126,6 +133,10 @@ export declare class LedgerService {
                 periodStart: Date;
                 periodEnd: Date;
                 grossSalary: import("@prisma/client-runtime-utils").Decimal;
+                standardSalary: import("@prisma/client-runtime-utils").Decimal;
+                otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+                otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+                otEarnings: import("@prisma/client-runtime-utils").Decimal;
                 advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
                 carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
                 totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -150,6 +161,7 @@ export declare class LedgerService {
                 salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
                 attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
                 advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+                overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             } | null;
         } & {
             id: string;
@@ -177,6 +189,10 @@ export declare class LedgerService {
                 periodStart: Date;
                 periodEnd: Date;
                 grossSalary: import("@prisma/client-runtime-utils").Decimal;
+                standardSalary: import("@prisma/client-runtime-utils").Decimal;
+                otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+                otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+                otEarnings: import("@prisma/client-runtime-utils").Decimal;
                 advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
                 carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
                 totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -201,6 +217,7 @@ export declare class LedgerService {
                 salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
                 attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
                 advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+                overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             } | null;
         } & {
             id: string;

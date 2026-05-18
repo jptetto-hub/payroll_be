@@ -49,6 +49,10 @@ export declare class LedgerRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -73,6 +77,7 @@ export declare class LedgerRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         } | null;
     } & {
         id: string;
@@ -100,6 +105,10 @@ export declare class LedgerRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -124,6 +133,7 @@ export declare class LedgerRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         } | null;
     } & {
         id: string;
@@ -178,6 +188,10 @@ export declare class LedgerRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -202,6 +216,7 @@ export declare class LedgerRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }) | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];

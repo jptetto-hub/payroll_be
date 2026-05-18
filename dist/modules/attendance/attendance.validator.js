@@ -8,11 +8,26 @@ const attendanceDateSchema = zod_1.z
     .string()
     .regex(dateOnlyRegex, "Date must be in YYYY-MM-DD format");
 const employeeIdSchema = zod_1.z.string().uuid("Valid employeeId is required");
+const isoDateTimeSchema = zod_1.z
+    .string()
+    .datetime("Time must be a valid ISO date-time")
+    .optional()
+    .nullable();
+const otFieldsSchema = {
+    checkInTime: isoDateTimeSchema,
+    checkOutTime: isoDateTimeSchema,
+    otStartTime: isoDateTimeSchema,
+    otEndTime: isoDateTimeSchema,
+    otHours: zod_1.z.number().min(0).max(24).optional().nullable(),
+    otManualOverride: zod_1.z.boolean().optional(),
+    otOverrideReason: zod_1.z.string().min(5).max(250).optional().nullable(),
+};
 exports.createAttendanceSchema = zod_1.z.object({
     body: zod_1.z.object({
         employeeId: employeeIdSchema,
         date: attendanceDateSchema,
         status: zod_1.z.nativeEnum(client_1.AttendanceStatus, "Status must be PRESENT, ABSENT, or HALF_DAY"),
+        ...otFieldsSchema,
     }),
 });
 exports.bulkAttendanceSchema = zod_1.z.object({
@@ -22,6 +37,7 @@ exports.bulkAttendanceSchema = zod_1.z.object({
             employeeId: employeeIdSchema,
             date: attendanceDateSchema,
             status: zod_1.z.nativeEnum(client_1.AttendanceStatus),
+            ...otFieldsSchema,
         }))
             .min(1, "At least one attendance record is required")
             .max(100, "Maximum 100 records allowed at once"),
@@ -31,6 +47,7 @@ exports.updateAttendanceSchema = zod_1.z.object({
     body: zod_1.z.object({
         status: zod_1.z.nativeEnum(client_1.AttendanceStatus),
         reason: zod_1.z.string().min(5, "Update reason is required").max(250),
+        ...otFieldsSchema,
     }),
 });
 exports.rangeQuerySchema = zod_1.z.object({
@@ -46,6 +63,7 @@ exports.bulkUpdateAttendanceSchema = zod_1.z.object({
             attendanceId: zod_1.z.string().uuid("Valid attendanceId is required"),
             status: zod_1.z.nativeEnum(client_1.AttendanceStatus),
             reason: zod_1.z.string().min(5).max(250),
+            ...otFieldsSchema,
         }))
             .min(1, "At least one attendance record is required")
             .max(100, "Maximum 100 records allowed at once"),

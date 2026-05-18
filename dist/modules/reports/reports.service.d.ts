@@ -10,6 +10,10 @@ export declare class ReportsService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -34,6 +38,7 @@ export declare class ReportsService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -47,12 +52,21 @@ export declare class ReportsService {
             date: Date;
             employeeId: string;
             lockedByPayrollId: string | null;
+            checkInTime: Date | null;
+            checkOutTime: Date | null;
+            otStartTime: Date | null;
+            otEndTime: Date | null;
+            otHours: import("@prisma/client-runtime-utils").Decimal;
+            otManualOverride: boolean;
+            otOverrideReason: string | null;
+            otBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         summary: {
             totalRecords: number;
             present: number;
             absent: number;
             halfDay: number;
+            totalOtHours: number;
         };
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -97,6 +111,10 @@ export declare class ReportsService {
             salaryType: any;
             periodStart: string;
             periodEnd: string;
+            standardSalary: number;
+            otTotalHours: number;
+            otHourlyRate: number;
+            otEarnings: number;
             grossSalary: number;
             advanceDeduction: number;
             carryForwardApplied: number;
@@ -109,6 +127,9 @@ export declare class ReportsService {
         summary: {
             totalEmployees: number;
             totalPayrollRecords: number;
+            totalStandardSalary: number;
+            totalOtHours: number;
+            totalOtEarnings: number;
             totalGrossSalary: number;
             totalAdvanceDeduction: number;
             totalCarryForwardApplied: number;

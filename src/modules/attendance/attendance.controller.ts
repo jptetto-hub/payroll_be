@@ -141,7 +141,7 @@ export class AttendanceController {
     try {
       const result = await AttendanceService.updateAttendance(
         req.params.id,
-        req.body.status,
+        req.body,
         req.user.role,
       );
       await AuditLogService.log({

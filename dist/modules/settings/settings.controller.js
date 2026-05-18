@@ -37,6 +37,80 @@ class SettingsController {
             next(error);
         }
     }
+    static async listWorkHourSettings(req, res, next) {
+        try {
+            const result = await settings_service_1.SettingsService.listWorkHourSettings(req.query);
+            res.json({
+                success: true,
+                message: "Work-hour settings fetched successfully",
+                data: result.data,
+                pagination: result.pagination,
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async createWorkHourSetting(req, res, next) {
+        try {
+            const result = await settings_service_1.SettingsService.createWorkHourSetting(req.body, req.user?.id);
+            await audit_log_service_1.AuditLogService.log({
+                userId: req.user.id,
+                action: "CREATE",
+                module: "WORK_HOUR_SETTINGS",
+                newData: result,
+                ipAddress: req.ip,
+            });
+            res.status(201).json({
+                success: true,
+                message: "Work-hour setting created successfully",
+                data: result,
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async updateWorkHourSetting(req, res, next) {
+        try {
+            const result = await settings_service_1.SettingsService.updateWorkHourSetting(String(req.params.id), req.body);
+            await audit_log_service_1.AuditLogService.log({
+                userId: req.user.id,
+                action: "UPDATE",
+                module: "WORK_HOUR_SETTINGS",
+                newData: result,
+                ipAddress: req.ip,
+            });
+            res.json({
+                success: true,
+                message: "Work-hour setting updated successfully",
+                data: result,
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
+    static async deleteWorkHourSetting(req, res, next) {
+        try {
+            const result = await settings_service_1.SettingsService.deleteWorkHourSetting(String(req.params.id));
+            await audit_log_service_1.AuditLogService.log({
+                userId: req.user.id,
+                action: "DELETE",
+                module: "WORK_HOUR_SETTINGS",
+                newData: result,
+                ipAddress: req.ip,
+            });
+            res.json({
+                success: true,
+                message: "Work-hour setting deactivated successfully",
+                data: result,
+            });
+        }
+        catch (error) {
+            next(error);
+        }
+    }
 }
 exports.SettingsController = SettingsController;
 //# sourceMappingURL=settings.controller.js.map

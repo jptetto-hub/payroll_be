@@ -8,6 +8,21 @@ const attendanceDateSchema = z
   .regex(dateOnlyRegex, "Date must be in YYYY-MM-DD format");
 
 const employeeIdSchema = z.string().uuid("Valid employeeId is required");
+const isoDateTimeSchema = z
+  .string()
+  .datetime("Time must be a valid ISO date-time")
+  .optional()
+  .nullable();
+
+const otFieldsSchema = {
+  checkInTime: isoDateTimeSchema,
+  checkOutTime: isoDateTimeSchema,
+  otStartTime: isoDateTimeSchema,
+  otEndTime: isoDateTimeSchema,
+  otHours: z.number().min(0).max(24).optional().nullable(),
+  otManualOverride: z.boolean().optional(),
+  otOverrideReason: z.string().min(5).max(250).optional().nullable(),
+};
 
 export const createAttendanceSchema = z.object({
   body: z.object({
@@ -17,6 +32,7 @@ export const createAttendanceSchema = z.object({
       AttendanceStatus,
       "Status must be PRESENT, ABSENT, or HALF_DAY",
     ),
+    ...otFieldsSchema,
   }),
 });
 
@@ -28,6 +44,7 @@ export const bulkAttendanceSchema = z.object({
           employeeId: employeeIdSchema,
           date: attendanceDateSchema,
           status: z.nativeEnum(AttendanceStatus),
+          ...otFieldsSchema,
         }),
       )
       .min(1, "At least one attendance record is required")
@@ -39,6 +56,7 @@ export const updateAttendanceSchema = z.object({
   body: z.object({
     status: z.nativeEnum(AttendanceStatus),
     reason: z.string().min(5, "Update reason is required").max(250),
+    ...otFieldsSchema,
   }),
 });
 
@@ -57,6 +75,7 @@ export const bulkUpdateAttendanceSchema = z.object({
           attendanceId: z.string().uuid("Valid attendanceId is required"),
           status: z.nativeEnum(AttendanceStatus),
           reason: z.string().min(5).max(250),
+          ...otFieldsSchema,
         }),
       )
       .min(1, "At least one attendance record is required")

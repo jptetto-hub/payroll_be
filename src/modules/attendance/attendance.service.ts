@@ -6,6 +6,7 @@ import {
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAttendanceNotLocked } from "../../shared/payroll/payroll-lock.util";
+import { OvertimeService } from "../../services/overtime.service";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -65,6 +66,60 @@ const ensureAllowedEmployeeAccess = (
     throw new Error("ADMIN can manage attendance only for USER employees");
   }
 };
+
+type AttendanceOtInput = {
+  checkInTime?: string | Date | null;
+  checkOutTime?: string | Date | null;
+  otStartTime?: string | Date | null;
+  otEndTime?: string | Date | null;
+  otHours?: number | null;
+  otManualOverride?: boolean;
+  otOverrideReason?: string | null;
+};
+
+const parseOptionalDateTime = (value?: string | Date | null) => {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date-time value");
+  }
+
+  return parsed;
+};
+
+const buildAttendancePayload = async (
+  attendanceDate: Date,
+  input: AttendanceOtInput,
+) => {
+  const checkInTime = parseOptionalDateTime(input.checkInTime);
+  const checkOutTime = parseOptionalDateTime(input.checkOutTime);
+  const otStartTime = parseOptionalDateTime(input.otStartTime);
+  const otEndTime = parseOptionalDateTime(input.otEndTime);
+    const ot = await OvertimeService.calculateForAttendance({
+      attendanceDate,
+      checkInTime,
+      checkOutTime,
+      otStartTime,
+      otEndTime,
+      ...(input.otHours !== undefined && { otHours: input.otHours }),
+      ...(input.otManualOverride !== undefined && {
+        otManualOverride: input.otManualOverride,
+      }),
+      ...(input.otOverrideReason !== undefined && {
+        otOverrideReason: input.otOverrideReason,
+      }),
+  });
+
+  return {
+    checkInTime,
+    checkOutTime,
+    ...ot,
+  };
+};
+
+const hasOwn = (value: object, key: string) =>
+  Object.prototype.hasOwnProperty.call(value, key);
 
 const getOrdinalDay = (day: number) => {
   if (day > 3 && day < 21) return `${day}th`;
@@ -167,7 +222,7 @@ export class AttendanceService {
       employeeId: string;
       date: string;
       status: AttendanceStatus;
-    },
+    } & AttendanceOtInput,
     currentUserRole: Role,
   ) {
     const employee = await AttendanceRepository.findEmployee(data.employeeId);
@@ -206,15 +261,16 @@ export class AttendanceService {
       employeeId: data.employeeId,
       date: attendanceDate,
       status: data.status,
+      ...(await buildAttendancePayload(attendanceDate, data)),
     });
   }
 
   static async bulkAttendance(
-    records: {
+    records: ({
       employeeId: string;
       date: string;
       status: AttendanceStatus;
-    }[],
+    } & AttendanceOtInput)[],
     currentUserRole: Role,
   ) {
     const seen = new Set<string>();
@@ -223,6 +279,7 @@ export class AttendanceService {
       attendanceDate: Date;
       status: AttendanceStatus;
       hasExistingAttendance: boolean;
+      otPayload: Awaited<ReturnType<typeof buildAttendancePayload>>;
     }[] = [];
     const existingDatesByEmployee = new Map<
       string,
@@ -290,6 +347,7 @@ export class AttendanceService {
         attendanceDate,
         status: record.status,
         hasExistingAttendance: Boolean(existing),
+        otPayload: await buildAttendancePayload(attendanceDate, record),
       });
     }
 
@@ -302,6 +360,7 @@ export class AttendanceService {
         employeeId: record.employeeId,
         date: record.attendanceDate,
         status: record.status,
+        ...record.otPayload,
       });
 
       results.push(saved);
@@ -414,7 +473,7 @@ export class AttendanceService {
 
   static async updateAttendance(
     id: string,
-    status: AttendanceStatus,
+    data: { status: AttendanceStatus } & AttendanceOtInput,
     currentUserRole: Role,
   ) {
     const attendance = await AttendanceRepository.findById(id);
@@ -433,7 +492,32 @@ export class AttendanceService {
     });
     await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
 
-    return AttendanceRepository.update(id, status);
+    return AttendanceRepository.update(id, {
+      status: data.status,
+      ...(await buildAttendancePayload(attendance.date, {
+        checkInTime: hasOwn(data, "checkInTime")
+          ? data.checkInTime
+          : (attendance as any).checkInTime,
+        checkOutTime: hasOwn(data, "checkOutTime")
+          ? data.checkOutTime
+          : (attendance as any).checkOutTime,
+        otStartTime: hasOwn(data, "otStartTime")
+          ? data.otStartTime
+          : (attendance as any).otStartTime,
+        otEndTime: hasOwn(data, "otEndTime")
+          ? data.otEndTime
+          : (attendance as any).otEndTime,
+        otHours: hasOwn(data, "otHours") && data.otHours !== undefined
+          ? data.otHours
+          : Number((attendance as any).otHours ?? 0),
+        otManualOverride:
+          data.otManualOverride ?? (attendance as any).otManualOverride ?? false,
+        otOverrideReason:
+          hasOwn(data, "otOverrideReason")
+            ? data.otOverrideReason
+            : (attendance as any).otOverrideReason ?? null,
+      })),
+    });
   }
 
   static async deleteAttendance(id: string, currentUserRole: Role) {
@@ -453,14 +537,18 @@ export class AttendanceService {
   }
 
   static async bulkUpdateAttendance(
-    records: {
+    records: ({
       attendanceId: string;
       status: AttendanceStatus;
       reason: string;
-    }[],
+    } & AttendanceOtInput)[],
     currentUserRole: Role,
   ) {
     const seen = new Set<string>();
+    const normalizedRecords: ({
+      attendanceId: string;
+      status: AttendanceStatus;
+    } & Awaited<ReturnType<typeof buildAttendancePayload>>)[] = [];
 
     for (const record of records) {
       if (seen.has(record.attendanceId)) {
@@ -487,14 +575,39 @@ export class AttendanceService {
         action: "Attendance date",
       });
       await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
-    }
 
-    return AttendanceRepository.updateMany(
-      records.map((record) => ({
+      normalizedRecords.push({
         attendanceId: record.attendanceId,
         status: record.status,
-      })),
-    );
+        ...(await buildAttendancePayload(attendance.date, {
+          checkInTime: hasOwn(record, "checkInTime")
+            ? record.checkInTime
+            : (attendance as any).checkInTime,
+          checkOutTime: hasOwn(record, "checkOutTime")
+            ? record.checkOutTime
+            : (attendance as any).checkOutTime,
+          otStartTime: hasOwn(record, "otStartTime")
+            ? record.otStartTime
+            : (attendance as any).otStartTime,
+          otEndTime: hasOwn(record, "otEndTime")
+            ? record.otEndTime
+            : (attendance as any).otEndTime,
+          otHours: hasOwn(record, "otHours") && record.otHours !== undefined
+            ? record.otHours
+            : Number((attendance as any).otHours ?? 0),
+          otManualOverride:
+            record.otManualOverride ??
+            (attendance as any).otManualOverride ??
+            false,
+          otOverrideReason:
+            hasOwn(record, "otOverrideReason")
+              ? record.otOverrideReason
+              : (attendance as any).otOverrideReason ?? null,
+        })),
+      });
+    }
+
+    return AttendanceRepository.updateMany(normalizedRecords);
   }
 
   static async bulkDeleteAttendance(

@@ -2,6 +2,11 @@ import { z } from "zod";
 import { AttendanceRequestType, AttendanceStatus } from "@prisma/client";
 
 const dateOnlyRegex = /^\d{4}-\d{2}-\d{2}$/;
+const isoDateTimeSchema = z
+  .string()
+  .datetime("Time must be a valid ISO date-time")
+  .optional()
+  .nullable();
 
 const requestItemSchema = z.object({
   attendanceDate: z
@@ -16,6 +21,13 @@ const requestItemSchema = z.object({
     "requestType must be ADD or EDIT",
   ),
   reason: z.string().min(5, "Reason is required").max(250),
+  requestedCheckInTime: isoDateTimeSchema,
+  requestedCheckOutTime: isoDateTimeSchema,
+  requestedOtStartTime: isoDateTimeSchema,
+  requestedOtEndTime: isoDateTimeSchema,
+  requestedOtHours: z.number().min(0).max(24).optional().nullable(),
+  requestedOtManualOverride: z.boolean().optional(),
+  requestedOtOverrideReason: z.string().min(5).max(250).optional().nullable(),
 });
 
 export const createAttendanceRequestSchema = z.object({

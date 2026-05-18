@@ -68,6 +68,10 @@ const payrollSelect = {
   periodEnd: true,
   salaryType: true,
   grossSalary: true,
+  standardSalary: true,
+  otTotalHours: true,
+  otHourlyRate: true,
+  otEarnings: true,
   advanceDeduction: true,
   carryForwardApplied: true,
   totalDeduction: true,
@@ -123,26 +127,33 @@ export class ReportsRepository {
       params.toDate,
     );
 
-    const [total, present, absent, halfDay, data] = await prisma.$transaction([
+    const [total, present, absent, halfDay, otAggregate, data] =
+      await prisma.$transaction([
       prisma.attendance.count({ where }),
       prisma.attendance.count({ where: { ...where, status: "PRESENT" } }),
       prisma.attendance.count({ where: { ...where, status: "ABSENT" } }),
       prisma.attendance.count({ where: { ...where, status: "HALF_DAY" } }),
-      prisma.attendance.findMany({
+        (prisma.attendance as any).aggregate({
         where,
-        include: {
-          employee: {
-            select: {
-              employeeCode: true,
-              name: true,
-              salaryType: true,
+        _sum: {
+          otHours: true,
+        },
+      }),
+        prisma.attendance.findMany({
+          where,
+          include: {
+            employee: {
+              select: {
+                employeeCode: true,
+                name: true,
+                salaryType: true,
+              },
             },
           },
-        },
-        orderBy: { date: "desc" },
-        ...paginationArgs(params),
-      } as any),
-    ]);
+          orderBy: { date: "desc" },
+          ...paginationArgs(params),
+        } as any),
+      ]);
 
     return {
       data,
@@ -151,6 +162,7 @@ export class ReportsRepository {
         present,
         absent,
         halfDay,
+        totalOtHours: Number((otAggregate as any)?._sum?.otHours ?? 0),
       },
       pagination: buildPaginationMeta(total, params.page, params.limit),
     };
@@ -238,6 +250,9 @@ export class ReportsRepository {
         where,
         _sum: {
           grossSalary: true,
+          standardSalary: true,
+          otTotalHours: true,
+          otEarnings: true,
           advanceDeduction: true,
           carryForwardApplied: true,
           totalDeduction: true,
@@ -259,6 +274,9 @@ export class ReportsRepository {
       summary: {
         totalEmployees: employees.length,
         totalPayrollRecords: total,
+        totalStandardSalary: Number(aggregate._sum.standardSalary ?? 0),
+        totalOtHours: Number(aggregate._sum.otTotalHours ?? 0),
+        totalOtEarnings: Number(aggregate._sum.otEarnings ?? 0),
         totalGrossSalary: Number(aggregate._sum.grossSalary ?? 0),
         totalAdvanceDeduction: Number(aggregate._sum.advanceDeduction ?? 0),
         totalCarryForwardApplied: Number(

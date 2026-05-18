@@ -1,6 +1,6 @@
 export declare class SchedulerService {
     static runPayrollScheduler(triggeredBy?: "CRON" | "MANUAL"): Promise<{
-        triggeredBy: "CRON" | "MANUAL";
+        triggeredBy: "MANUAL" | "CRON";
         totalEmployees: number;
         successCount: number;
         skippedCount: number;

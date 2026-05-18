@@ -95,7 +95,7 @@ class AttendanceController {
     }
     static async update(req, res, next) {
         try {
-            const result = await attendance_service_1.AttendanceService.updateAttendance(req.params.id, req.body.status, req.user.role);
+            const result = await attendance_service_1.AttendanceService.updateAttendance(req.params.id, req.body, req.user.role);
             await audit_log_service_1.AuditLogService.log({
                 userId: req.user.id,
                 action: "UPDATE",

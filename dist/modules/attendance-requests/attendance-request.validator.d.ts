@@ -13,6 +13,13 @@ export declare const createAttendanceRequestSchema: z.ZodObject<{
                 EDIT: "EDIT";
             }>;
             reason: z.ZodString;
+            requestedCheckInTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            requestedCheckOutTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            requestedOtStartTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            requestedOtEndTime: z.ZodNullable<z.ZodOptional<z.ZodString>>;
+            requestedOtHours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
+            requestedOtManualOverride: z.ZodOptional<z.ZodBoolean>;
+            requestedOtOverrideReason: z.ZodNullable<z.ZodOptional<z.ZodString>>;
         }, z.core.$strip>>;
     }, z.core.$strip>;
 }, z.core.$strip>;

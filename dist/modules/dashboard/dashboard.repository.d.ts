@@ -19,6 +19,8 @@ export declare class DashboardRepository {
         };
         _sum: {
             finalSalary: true;
+            otTotalHours: true;
+            otEarnings: true;
             totalDeduction: true;
             advanceDeduction: true;
         };
@@ -93,6 +95,10 @@ export declare class DashboardRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -117,6 +123,7 @@ export declare class DashboardRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     })[], number]>;
     static recentActivities(params: {
         employeeWhere: Prisma.EmployeeWhereInput;
@@ -152,6 +159,10 @@ export declare class DashboardRepository {
                 periodStart: Date;
                 periodEnd: Date;
                 grossSalary: Prisma.Decimal;
+                standardSalary: Prisma.Decimal;
+                otTotalHours: Prisma.Decimal;
+                otHourlyRate: Prisma.Decimal;
+                otEarnings: Prisma.Decimal;
                 advanceDeduction: Prisma.Decimal;
                 carryForwardApplied: Prisma.Decimal;
                 totalDeduction: Prisma.Decimal;
@@ -176,6 +187,7 @@ export declare class DashboardRepository {
                 salaryBreakdown: Prisma.JsonValue;
                 attendanceBreakdown: Prisma.JsonValue | null;
                 advanceBreakdown: Prisma.JsonValue | null;
+                overtimeBreakdown: Prisma.JsonValue | null;
             })[];
             attendance: ({
                 employee: {
@@ -204,6 +216,14 @@ export declare class DashboardRepository {
                 date: Date;
                 employeeId: string;
                 lockedByPayrollId: string | null;
+                checkInTime: Date | null;
+                checkOutTime: Date | null;
+                otStartTime: Date | null;
+                otEndTime: Date | null;
+                otHours: Prisma.Decimal;
+                otManualOverride: boolean;
+                otOverrideReason: string | null;
+                otBreakdown: Prisma.JsonValue | null;
             })[];
             advances: ({
                 employee: {
@@ -272,6 +292,13 @@ export declare class DashboardRepository {
                 requestedStatus: import(".prisma/client").$Enums.AttendanceStatus;
                 requestType: import(".prisma/client").$Enums.AttendanceRequestType;
                 reason: string | null;
+                requestedCheckInTime: Date | null;
+                requestedCheckOutTime: Date | null;
+                requestedOtStartTime: Date | null;
+                requestedOtEndTime: Date | null;
+                requestedOtHours: Prisma.Decimal | null;
+                requestedOtManualOverride: boolean;
+                requestedOtOverrideReason: string | null;
                 requestedById: string;
                 approvedById: string | null;
                 approvedAt: Date | null;

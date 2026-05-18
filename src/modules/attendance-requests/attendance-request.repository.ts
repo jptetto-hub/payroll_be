@@ -5,6 +5,12 @@ import {
   RequestStatus,
 } from "@prisma/client";
 import { prisma } from "../../config/prisma";
+import { OvertimeService } from "../../services/overtime.service";
+
+const stripUndefined = (data: Record<string, any>): Record<string, any> =>
+  Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
 
 export class AttendanceRequestRepository {
   static findEmployee(employeeId: string) {
@@ -50,6 +56,13 @@ export class AttendanceRequestRepository {
     requestType: AttendanceRequestType;
     reason: string;
     requestedById: string;
+    requestedCheckInTime?: Date | null;
+    requestedCheckOutTime?: Date | null;
+    requestedOtStartTime?: Date | null;
+    requestedOtEndTime?: Date | null;
+    requestedOtHours?: number | null;
+    requestedOtManualOverride?: boolean;
+    requestedOtOverrideReason?: string | null;
   }) {
     return prisma.attendanceRequest.create({
       data,
@@ -105,8 +118,32 @@ export class AttendanceRequestRepository {
     employeeId: string;
     attendanceDate: Date;
     requestedStatus: AttendanceStatus;
+    requestedCheckInTime?: Date | null;
+    requestedCheckOutTime?: Date | null;
+    requestedOtStartTime?: Date | null;
+    requestedOtEndTime?: Date | null;
+    requestedOtHours?: number | null;
+    requestedOtManualOverride?: boolean;
+    requestedOtOverrideReason?: string | null;
+    otStartTime?: Date | null;
+    otEndTime?: Date | null;
+    otHours?: number;
+    otManualOverride?: boolean;
+    otOverrideReason?: string | null;
+    otBreakdown?: any;
   }) {
     return prisma.$transaction(async (tx) => {
+      const ot = await OvertimeService.calculateForAttendance(stripUndefined({
+        attendanceDate: params.attendanceDate,
+        checkInTime: params.requestedCheckInTime,
+        checkOutTime: params.requestedCheckOutTime,
+        otStartTime: params.requestedOtStartTime,
+        otEndTime: params.requestedOtEndTime,
+        otHours: params.requestedOtHours,
+        otManualOverride: params.requestedOtManualOverride,
+        otOverrideReason: params.requestedOtOverrideReason,
+      }) as any);
+
       const attendance = await tx.attendance.upsert({
         where: {
           employeeId_date: {
@@ -114,14 +151,30 @@ export class AttendanceRequestRepository {
             date: params.attendanceDate,
           },
         },
-        update: {
+        update: stripUndefined({
           status: params.requestedStatus,
-        },
-        create: {
+          checkInTime: params.requestedCheckInTime,
+          checkOutTime: params.requestedCheckOutTime,
+          otStartTime: ot.otStartTime,
+          otEndTime: ot.otEndTime,
+          otHours: ot.otHours,
+          otManualOverride: ot.otManualOverride,
+          otOverrideReason: ot.otOverrideReason,
+          otBreakdown: ot.otBreakdown,
+        }),
+        create: stripUndefined({
           employeeId: params.employeeId,
           date: params.attendanceDate,
           status: params.requestedStatus,
-        },
+          checkInTime: params.requestedCheckInTime,
+          checkOutTime: params.requestedCheckOutTime,
+          otStartTime: ot.otStartTime,
+          otEndTime: ot.otEndTime,
+          otHours: ot.otHours,
+          otManualOverride: ot.otManualOverride,
+          otOverrideReason: ot.otOverrideReason,
+          otBreakdown: ot.otBreakdown,
+        }) as any,
       });
 
       const request = await tx.attendanceRequest.update({
@@ -165,12 +218,19 @@ export class AttendanceRequestRepository {
       requestType: AttendanceRequestType;
       reason: string;
       requestedById: string;
+      requestedCheckInTime?: Date | null;
+      requestedCheckOutTime?: Date | null;
+      requestedOtStartTime?: Date | null;
+      requestedOtEndTime?: Date | null;
+      requestedOtHours?: number | null;
+      requestedOtManualOverride?: boolean;
+      requestedOtOverrideReason?: string | null;
     }[],
   ) {
     return prisma.$transaction(
       records.map((record) =>
         prisma.attendanceRequest.create({
-          data: record,
+          data: stripUndefined(record) as any,
         }),
       ),
     );
@@ -349,6 +409,20 @@ export class AttendanceRequestRepository {
       const attendanceResults = [];
 
       for (const request of requests) {
+        const ot = await OvertimeService.calculateForAttendance(stripUndefined({
+          attendanceDate: request.attendanceDate,
+          checkInTime: request.requestedCheckInTime,
+          checkOutTime: request.requestedCheckOutTime,
+          otStartTime: request.requestedOtStartTime,
+          otEndTime: request.requestedOtEndTime,
+          otHours:
+            request.requestedOtHours === null
+              ? null
+              : Number(request.requestedOtHours ?? 0),
+          otManualOverride: request.requestedOtManualOverride,
+          otOverrideReason: request.requestedOtOverrideReason,
+        }) as any);
+
         const attendance = await tx.attendance.upsert({
           where: {
             employeeId_date: {
@@ -356,14 +430,30 @@ export class AttendanceRequestRepository {
               date: request.attendanceDate,
             },
           },
-          update: {
-            status: request.requestedStatus,
-          },
-          create: {
+          update: stripUndefined({
+          status: request.requestedStatus,
+          checkInTime: request.requestedCheckInTime,
+          checkOutTime: request.requestedCheckOutTime,
+          otStartTime: ot.otStartTime,
+          otEndTime: ot.otEndTime,
+          otHours: ot.otHours,
+          otManualOverride: ot.otManualOverride,
+          otOverrideReason: ot.otOverrideReason,
+          otBreakdown: ot.otBreakdown,
+        }),
+          create: stripUndefined({
             employeeId: request.employeeId,
             date: request.attendanceDate,
-            status: request.requestedStatus,
-          },
+          status: request.requestedStatus,
+          checkInTime: request.requestedCheckInTime,
+          checkOutTime: request.requestedCheckOutTime,
+          otStartTime: ot.otStartTime,
+          otEndTime: ot.otEndTime,
+          otHours: ot.otHours,
+          otManualOverride: ot.otManualOverride,
+          otOverrideReason: ot.otOverrideReason,
+          otBreakdown: ot.otBreakdown,
+        }) as any,
         });
 
         attendanceResults.push(attendance);

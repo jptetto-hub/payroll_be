@@ -133,6 +133,10 @@ export declare class SalaryHistoryRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: import("@prisma/client-runtime-utils").Decimal;
+        standardSalary: import("@prisma/client-runtime-utils").Decimal;
+        otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+        otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+        otEarnings: import("@prisma/client-runtime-utils").Decimal;
         advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
         carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
         totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -157,6 +161,7 @@ export declare class SalaryHistoryRepository {
         salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
         attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+        overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     } | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];

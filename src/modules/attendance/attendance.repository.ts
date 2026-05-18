@@ -1,6 +1,11 @@
 import { prisma } from "../../config/prisma";
 import { AttendanceStatus, Prisma } from "@prisma/client";
 
+const stripUndefined = (data: Record<string, any>): Record<string, any> =>
+  Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined),
+  );
+
 export class AttendanceRepository {
   static findEmployee(employeeId: string) {
     return prisma.employee.findUnique({
@@ -50,6 +55,14 @@ export class AttendanceRepository {
     employeeId: string;
     date: Date;
     status: AttendanceStatus;
+    checkInTime?: Date | null;
+    checkOutTime?: Date | null;
+    otStartTime?: Date | null;
+    otEndTime?: Date | null;
+    otHours?: number;
+    otManualOverride?: boolean;
+    otOverrideReason?: string | null;
+    otBreakdown?: any;
   }) {
     return prisma.attendance.create({
       data,
@@ -60,6 +73,14 @@ export class AttendanceRepository {
     employeeId: string;
     date: Date;
     status: AttendanceStatus;
+    checkInTime?: Date | null;
+    checkOutTime?: Date | null;
+    otStartTime?: Date | null;
+    otEndTime?: Date | null;
+    otHours?: number;
+    otManualOverride?: boolean;
+    otOverrideReason?: string | null;
+    otBreakdown?: any;
   }) {
     return prisma.attendance.upsert({
       where: {
@@ -68,9 +89,17 @@ export class AttendanceRepository {
           date: data.date,
         },
       },
-      update: {
+      update: stripUndefined({
         status: data.status,
-      },
+        checkInTime: data.checkInTime,
+        checkOutTime: data.checkOutTime,
+        otStartTime: data.otStartTime,
+        otEndTime: data.otEndTime,
+        otHours: data.otHours,
+        otManualOverride: data.otManualOverride,
+        otOverrideReason: data.otOverrideReason,
+        otBreakdown: data.otBreakdown,
+      }),
       create: data,
     });
   }
@@ -214,10 +243,10 @@ export class AttendanceRepository {
     });
   }
 
-  static update(id: string, status: AttendanceStatus) {
+  static update(id: string, data: { status: AttendanceStatus } & Record<string, any>) {
     return prisma.attendance.update({
       where: { id },
-      data: { status },
+      data,
     });
   }
 
@@ -231,13 +260,31 @@ export class AttendanceRepository {
     records: {
       attendanceId: string;
       status: AttendanceStatus;
+      checkInTime?: Date | null;
+      checkOutTime?: Date | null;
+      otStartTime?: Date | null;
+      otEndTime?: Date | null;
+      otHours?: number;
+      otManualOverride?: boolean;
+      otOverrideReason?: string | null;
+      otBreakdown?: any;
     }[],
   ) {
     return prisma.$transaction(
       records.map((record) =>
         prisma.attendance.update({
           where: { id: record.attendanceId },
-          data: { status: record.status },
+          data: stripUndefined({
+            status: record.status,
+            checkInTime: record.checkInTime,
+            checkOutTime: record.checkOutTime,
+            otStartTime: record.otStartTime,
+            otEndTime: record.otEndTime,
+            otHours: record.otHours,
+            otManualOverride: record.otManualOverride,
+            otOverrideReason: record.otOverrideReason,
+            otBreakdown: record.otBreakdown,
+          }),
         }),
       ),
     );

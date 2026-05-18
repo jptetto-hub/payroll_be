@@ -19,6 +19,10 @@ export declare class PayslipRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -43,6 +47,7 @@ export declare class PayslipRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }) | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -65,6 +70,10 @@ export declare class PayslipRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -89,6 +98,7 @@ export declare class PayslipRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
     } & {
         id: string;
@@ -97,6 +107,10 @@ export declare class PayslipRepository {
         employeeId: string;
         periodStart: Date;
         periodEnd: Date;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         finalSalary: Prisma.Decimal;
         totalDays: number;
@@ -105,6 +119,7 @@ export declare class PayslipRepository {
         halfDays: Prisma.Decimal;
         isRecalculated: boolean;
         salaryBreakdown: Prisma.JsonValue;
+        overtimeBreakdown: Prisma.JsonValue | null;
         payrollId: string;
         payrollVersion: number;
         pdfUrl: string | null;
@@ -135,6 +150,10 @@ export declare class PayslipRepository {
         employeeId: string;
         periodStart: Date;
         periodEnd: Date;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         finalSalary: Prisma.Decimal;
         totalDays: number;
@@ -143,6 +162,7 @@ export declare class PayslipRepository {
         halfDays: Prisma.Decimal;
         isRecalculated: boolean;
         salaryBreakdown: Prisma.JsonValue;
+        overtimeBreakdown: Prisma.JsonValue | null;
         payrollId: string;
         payrollVersion: number;
         pdfUrl: string | null;
@@ -174,6 +194,10 @@ export declare class PayslipRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -198,6 +222,7 @@ export declare class PayslipRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
     } & {
         id: string;
@@ -206,6 +231,10 @@ export declare class PayslipRepository {
         employeeId: string;
         periodStart: Date;
         periodEnd: Date;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         finalSalary: Prisma.Decimal;
         totalDays: number;
@@ -214,6 +243,7 @@ export declare class PayslipRepository {
         halfDays: Prisma.Decimal;
         isRecalculated: boolean;
         salaryBreakdown: Prisma.JsonValue;
+        overtimeBreakdown: Prisma.JsonValue | null;
         payrollId: string;
         payrollVersion: number;
         pdfUrl: string | null;
@@ -239,6 +269,10 @@ export declare class PayslipRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -263,6 +297,7 @@ export declare class PayslipRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
     } & {
         id: string;
@@ -271,6 +306,10 @@ export declare class PayslipRepository {
         employeeId: string;
         periodStart: Date;
         periodEnd: Date;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         finalSalary: Prisma.Decimal;
         totalDays: number;
@@ -279,6 +318,7 @@ export declare class PayslipRepository {
         halfDays: Prisma.Decimal;
         isRecalculated: boolean;
         salaryBreakdown: Prisma.JsonValue;
+        overtimeBreakdown: Prisma.JsonValue | null;
         payrollId: string;
         payrollVersion: number;
         pdfUrl: string | null;
@@ -300,6 +340,10 @@ export declare class PayslipRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -324,6 +368,7 @@ export declare class PayslipRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
     } & {
         id: string;
@@ -332,6 +377,10 @@ export declare class PayslipRepository {
         employeeId: string;
         periodStart: Date;
         periodEnd: Date;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         finalSalary: Prisma.Decimal;
         totalDays: number;
@@ -340,6 +389,7 @@ export declare class PayslipRepository {
         halfDays: Prisma.Decimal;
         isRecalculated: boolean;
         salaryBreakdown: Prisma.JsonValue;
+        overtimeBreakdown: Prisma.JsonValue | null;
         payrollId: string;
         payrollVersion: number;
         pdfUrl: string | null;

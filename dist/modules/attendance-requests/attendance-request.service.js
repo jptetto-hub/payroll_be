@@ -35,6 +35,27 @@ const parseOptionalDate = (value) => {
     }
     return parsed;
 };
+const parseOptionalDateTime = (value) => {
+    if (!value)
+        return null;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error("Invalid date-time value");
+    }
+    return parsed;
+};
+const hasRequestedOtChange = (item) => Boolean(item.requestedCheckInTime ||
+    item.requestedCheckOutTime ||
+    item.requestedOtStartTime ||
+    item.requestedOtEndTime ||
+    item.requestedOtHours !== undefined ||
+    item.requestedOtManualOverride !== undefined);
+const requestHasOtChange = (request) => Boolean(request.requestedCheckInTime ||
+    request.requestedCheckOutTime ||
+    request.requestedOtStartTime ||
+    request.requestedOtEndTime ||
+    request.requestedOtHours !== null ||
+    request.requestedOtManualOverride);
 const groupByStatus = (requests) => {
     return {
         pending: requests.filter((item) => item.status === "PENDING"),
@@ -97,7 +118,8 @@ class AttendanceRequestService {
                 throw new Error(`Attendance does not exist for ${item.attendanceDate}. Use ADD request`);
             }
             if (item.requestType === client_1.AttendanceRequestType.EDIT &&
-                existingAttendance?.status === item.requestedStatus) {
+                existingAttendance?.status === item.requestedStatus &&
+                !hasRequestedOtChange(item)) {
                 throw new Error(`Requested status is same as current attendance status for ${item.attendanceDate}`);
             }
             records.push({
@@ -108,6 +130,13 @@ class AttendanceRequestService {
                 requestType: item.requestType,
                 reason: item.reason,
                 requestedById: currentUser.id,
+                requestedCheckInTime: parseOptionalDateTime(item.requestedCheckInTime),
+                requestedCheckOutTime: parseOptionalDateTime(item.requestedCheckOutTime),
+                requestedOtStartTime: parseOptionalDateTime(item.requestedOtStartTime),
+                requestedOtEndTime: parseOptionalDateTime(item.requestedOtEndTime),
+                requestedOtHours: item.requestedOtHours ?? null,
+                requestedOtManualOverride: item.requestedOtManualOverride ?? false,
+                requestedOtOverrideReason: item.requestedOtOverrideReason ?? null,
             });
         }
         return attendance_request_repository_1.AttendanceRequestRepository.createMany(records);
@@ -228,7 +257,8 @@ class AttendanceRequestService {
                 throw new Error(`Cannot approve EDIT request because attendance does not exist for ${request.attendanceDate.toISOString().slice(0, 10)}`);
             }
             if (request.requestType === "EDIT" &&
-                currentAttendance?.status === request.requestedStatus) {
+                currentAttendance?.status === request.requestedStatus &&
+                !requestHasOtChange(request)) {
                 throw new Error(`Cannot approve because requested status is already applied for ${request.attendanceDate.toISOString().slice(0, 10)}`);
             }
         }
@@ -259,7 +289,8 @@ class AttendanceRequestService {
             throw new Error("Cannot approve EDIT request because attendance does not exist");
         }
         if (request.requestType === client_1.AttendanceRequestType.EDIT &&
-            currentAttendance?.status === request.requestedStatus) {
+            currentAttendance?.status === request.requestedStatus &&
+            !requestHasOtChange(request)) {
             throw new Error("Cannot approve because requested status is already applied");
         }
         return attendance_request_repository_1.AttendanceRequestRepository.approveRequest({
@@ -268,6 +299,15 @@ class AttendanceRequestService {
             employeeId: request.employeeId,
             attendanceDate: request.attendanceDate,
             requestedStatus: request.requestedStatus,
+            requestedCheckInTime: request.requestedCheckInTime,
+            requestedCheckOutTime: request.requestedCheckOutTime,
+            requestedOtStartTime: request.requestedOtStartTime,
+            requestedOtEndTime: request.requestedOtEndTime,
+            requestedOtHours: request.requestedOtHours === null
+                ? null
+                : Number(request.requestedOtHours ?? 0),
+            requestedOtManualOverride: request.requestedOtManualOverride,
+            requestedOtOverrideReason: request.requestedOtOverrideReason,
         });
     }
     static async rejectRequest(requestId, approvedById, rejectionReason) {

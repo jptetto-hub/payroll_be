@@ -33,6 +33,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -57,6 +61,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     } | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -71,6 +76,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -95,6 +104,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     } | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -116,6 +126,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -140,6 +154,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -169,6 +184,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -193,6 +212,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     })[], number]>;
     static findById(id: string): Prisma.Prisma__PayrollClient<({
         payslips: {
@@ -202,6 +222,10 @@ export declare class PayrollRepository {
             employeeId: string;
             periodStart: Date;
             periodEnd: Date;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             finalSalary: Prisma.Decimal;
             totalDays: number;
@@ -210,6 +234,7 @@ export declare class PayrollRepository {
             halfDays: Prisma.Decimal;
             isRecalculated: boolean;
             salaryBreakdown: Prisma.JsonValue;
+            overtimeBreakdown: Prisma.JsonValue | null;
             payrollId: string;
             payrollVersion: number;
             pdfUrl: string | null;
@@ -245,6 +270,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -269,6 +298,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }) | null, null, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -286,6 +316,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -310,6 +344,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }[]>;
     static countByEmployee(employeeId: string): Prisma.PrismaPromise<number>;
     static updateStatus(id: string, status: PayrollStatus): Prisma.Prisma__PayrollClient<{
@@ -322,6 +357,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -346,6 +385,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -360,6 +400,10 @@ export declare class PayrollRepository {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: Prisma.Decimal;
+        standardSalary: Prisma.Decimal;
+        otTotalHours: Prisma.Decimal;
+        otHourlyRate: Prisma.Decimal;
+        otEarnings: Prisma.Decimal;
         advanceDeduction: Prisma.Decimal;
         carryForwardApplied: Prisma.Decimal;
         totalDeduction: Prisma.Decimal;
@@ -384,6 +428,7 @@ export declare class PayrollRepository {
         salaryBreakdown: Prisma.JsonValue;
         attendanceBreakdown: Prisma.JsonValue | null;
         advanceBreakdown: Prisma.JsonValue | null;
+        overtimeBreakdown: Prisma.JsonValue | null;
     }, never, import("@prisma/client/runtime/client").DefaultArgs, {
         adapter: import("@prisma/adapter-pg").PrismaPg;
         log: ("query" | "warn" | "error")[];
@@ -402,6 +447,10 @@ export declare class PayrollRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -426,6 +475,7 @@ export declare class PayrollRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
         newPayroll: {
             employee: {
@@ -444,6 +494,10 @@ export declare class PayrollRepository {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: Prisma.Decimal;
+            standardSalary: Prisma.Decimal;
+            otTotalHours: Prisma.Decimal;
+            otHourlyRate: Prisma.Decimal;
+            otEarnings: Prisma.Decimal;
             advanceDeduction: Prisma.Decimal;
             carryForwardApplied: Prisma.Decimal;
             totalDeduction: Prisma.Decimal;
@@ -468,6 +522,7 @@ export declare class PayrollRepository {
             salaryBreakdown: Prisma.JsonValue;
             attendanceBreakdown: Prisma.JsonValue | null;
             advanceBreakdown: Prisma.JsonValue | null;
+            overtimeBreakdown: Prisma.JsonValue | null;
         };
     }>;
 }

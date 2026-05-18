@@ -26,6 +26,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -50,6 +54,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         };
         payslip: {
             employee: {
@@ -66,6 +71,10 @@ export declare class PayrollService {
             employeeId: string;
             periodStart: Date;
             periodEnd: Date;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             finalSalary: import("@prisma/client-runtime-utils").Decimal;
             totalDays: number;
@@ -74,6 +83,7 @@ export declare class PayrollService {
             halfDays: import("@prisma/client-runtime-utils").Decimal;
             isRecalculated: boolean;
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             payrollId: string;
             payrollVersion: number;
             pdfUrl: string | null;
@@ -128,6 +138,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -152,6 +166,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         })[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -163,6 +178,10 @@ export declare class PayrollService {
             employeeId: string;
             periodStart: Date;
             periodEnd: Date;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             finalSalary: import("@prisma/client-runtime-utils").Decimal;
             totalDays: number;
@@ -171,6 +190,7 @@ export declare class PayrollService {
             halfDays: import("@prisma/client-runtime-utils").Decimal;
             isRecalculated: boolean;
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             payrollId: string;
             payrollVersion: number;
             pdfUrl: string | null;
@@ -206,6 +226,10 @@ export declare class PayrollService {
         periodStart: Date;
         periodEnd: Date;
         grossSalary: import("@prisma/client-runtime-utils").Decimal;
+        standardSalary: import("@prisma/client-runtime-utils").Decimal;
+        otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+        otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+        otEarnings: import("@prisma/client-runtime-utils").Decimal;
         advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
         carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
         totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -230,6 +254,7 @@ export declare class PayrollService {
         salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
         attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+        overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
     }>;
     static listByEmployee(employeeId: string, currentUserRole: Role, query: any): Promise<{
         data: {
@@ -242,6 +267,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -266,6 +295,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         }[];
         pagination: import("../../shared/utils/pagination.util").PaginationMeta;
     }>;
@@ -280,6 +310,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -304,6 +338,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         };
         unlocked: {
             attendanceCount: number;
@@ -323,6 +358,10 @@ export declare class PayrollService {
                 employeeId: string;
                 periodStart: Date;
                 periodEnd: Date;
+                standardSalary: import("@prisma/client-runtime-utils").Decimal;
+                otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+                otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+                otEarnings: import("@prisma/client-runtime-utils").Decimal;
                 advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
                 finalSalary: import("@prisma/client-runtime-utils").Decimal;
                 totalDays: number;
@@ -331,6 +370,7 @@ export declare class PayrollService {
                 halfDays: import("@prisma/client-runtime-utils").Decimal;
                 isRecalculated: boolean;
                 salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
+                overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
                 payrollId: string;
                 payrollVersion: number;
                 pdfUrl: string | null;
@@ -366,6 +406,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -390,6 +434,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         };
     }>;
     static recalculatePayroll(id: string, currentUserRole: Role, reason: string, currentUserId: string): Promise<{
@@ -408,6 +453,10 @@ export declare class PayrollService {
             employeeId: string;
             periodStart: Date;
             periodEnd: Date;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             finalSalary: import("@prisma/client-runtime-utils").Decimal;
             totalDays: number;
@@ -416,6 +465,7 @@ export declare class PayrollService {
             halfDays: import("@prisma/client-runtime-utils").Decimal;
             isRecalculated: boolean;
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             payrollId: string;
             payrollVersion: number;
             pdfUrl: string | null;
@@ -442,6 +492,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -466,6 +520,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         };
         newPayroll: {
             employee: {
@@ -484,6 +539,10 @@ export declare class PayrollService {
             periodStart: Date;
             periodEnd: Date;
             grossSalary: import("@prisma/client-runtime-utils").Decimal;
+            standardSalary: import("@prisma/client-runtime-utils").Decimal;
+            otTotalHours: import("@prisma/client-runtime-utils").Decimal;
+            otHourlyRate: import("@prisma/client-runtime-utils").Decimal;
+            otEarnings: import("@prisma/client-runtime-utils").Decimal;
             advanceDeduction: import("@prisma/client-runtime-utils").Decimal;
             carryForwardApplied: import("@prisma/client-runtime-utils").Decimal;
             totalDeduction: import("@prisma/client-runtime-utils").Decimal;
@@ -508,6 +567,7 @@ export declare class PayrollService {
             salaryBreakdown: import("@prisma/client/runtime/client").JsonValue;
             attendanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
             advanceBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
+            overtimeBreakdown: import("@prisma/client/runtime/client").JsonValue | null;
         };
     }>;
 }

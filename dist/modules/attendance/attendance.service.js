@@ -6,6 +6,7 @@ const attendance_repository_1 = require("./attendance.repository");
 const pagination_util_1 = require("../../shared/utils/pagination.util");
 const employee_scope_util_1 = require("../../shared/utils/employee-scope.util");
 const payroll_lock_util_1 = require("../../shared/payroll/payroll-lock.util");
+const overtime_service_1 = require("../../services/overtime.service");
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const normalizeDate = (date) => {
     const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -42,6 +43,41 @@ const ensureAllowedEmployeeAccess = (targetEmployeeRole, currentUserRole) => {
         throw new Error("ADMIN can manage attendance only for USER employees");
     }
 };
+const parseOptionalDateTime = (value) => {
+    if (!value)
+        return null;
+    const parsed = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error("Invalid date-time value");
+    }
+    return parsed;
+};
+const buildAttendancePayload = async (attendanceDate, input) => {
+    const checkInTime = parseOptionalDateTime(input.checkInTime);
+    const checkOutTime = parseOptionalDateTime(input.checkOutTime);
+    const otStartTime = parseOptionalDateTime(input.otStartTime);
+    const otEndTime = parseOptionalDateTime(input.otEndTime);
+    const ot = await overtime_service_1.OvertimeService.calculateForAttendance({
+        attendanceDate,
+        checkInTime,
+        checkOutTime,
+        otStartTime,
+        otEndTime,
+        ...(input.otHours !== undefined && { otHours: input.otHours }),
+        ...(input.otManualOverride !== undefined && {
+            otManualOverride: input.otManualOverride,
+        }),
+        ...(input.otOverrideReason !== undefined && {
+            otOverrideReason: input.otOverrideReason,
+        }),
+    });
+    return {
+        checkInTime,
+        checkOutTime,
+        ...ot,
+    };
+};
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const getOrdinalDay = (day) => {
     if (day > 3 && day < 21)
         return `${day}th`;
@@ -139,6 +175,7 @@ class AttendanceService {
             employeeId: data.employeeId,
             date: attendanceDate,
             status: data.status,
+            ...(await buildAttendancePayload(attendanceDate, data)),
         });
     }
     static async bulkAttendance(records, currentUserRole) {
@@ -187,6 +224,7 @@ class AttendanceService {
                 attendanceDate,
                 status: record.status,
                 hasExistingAttendance: Boolean(existing),
+                otPayload: await buildAttendancePayload(attendanceDate, record),
             });
         }
         const results = [];
@@ -195,6 +233,7 @@ class AttendanceService {
                 employeeId: record.employeeId,
                 date: record.attendanceDate,
                 status: record.status,
+                ...record.otPayload,
             });
             results.push(saved);
         }
@@ -266,7 +305,7 @@ class AttendanceService {
             pagination: (0, pagination_util_1.buildPaginationMeta)(total, page, limit),
         };
     }
-    static async updateAttendance(id, status, currentUserRole) {
+    static async updateAttendance(id, data, currentUserRole) {
         const attendance = await attendance_repository_1.AttendanceRepository.findById(id);
         if (!attendance) {
             throw new Error("Attendance record not found");
@@ -279,7 +318,30 @@ class AttendanceService {
             action: "Attendance date",
         });
         await (0, payroll_lock_util_1.assertAttendanceNotLocked)(attendance.employeeId, attendance.date);
-        return attendance_repository_1.AttendanceRepository.update(id, status);
+        return attendance_repository_1.AttendanceRepository.update(id, {
+            status: data.status,
+            ...(await buildAttendancePayload(attendance.date, {
+                checkInTime: hasOwn(data, "checkInTime")
+                    ? data.checkInTime
+                    : attendance.checkInTime,
+                checkOutTime: hasOwn(data, "checkOutTime")
+                    ? data.checkOutTime
+                    : attendance.checkOutTime,
+                otStartTime: hasOwn(data, "otStartTime")
+                    ? data.otStartTime
+                    : attendance.otStartTime,
+                otEndTime: hasOwn(data, "otEndTime")
+                    ? data.otEndTime
+                    : attendance.otEndTime,
+                otHours: hasOwn(data, "otHours") && data.otHours !== undefined
+                    ? data.otHours
+                    : Number(attendance.otHours ?? 0),
+                otManualOverride: data.otManualOverride ?? attendance.otManualOverride ?? false,
+                otOverrideReason: hasOwn(data, "otOverrideReason")
+                    ? data.otOverrideReason
+                    : attendance.otOverrideReason ?? null,
+            })),
+        });
     }
     static async deleteAttendance(id, currentUserRole) {
         if (currentUserRole !== client_1.Role.SUPER_ADMIN) {
@@ -294,6 +356,7 @@ class AttendanceService {
     }
     static async bulkUpdateAttendance(records, currentUserRole) {
         const seen = new Set();
+        const normalizedRecords = [];
         for (const record of records) {
             if (seen.has(record.attendanceId)) {
                 throw new Error(`Duplicate attendanceId in request: ${record.attendanceId}`);
@@ -311,11 +374,35 @@ class AttendanceService {
                 action: "Attendance date",
             });
             await (0, payroll_lock_util_1.assertAttendanceNotLocked)(attendance.employeeId, attendance.date);
+            normalizedRecords.push({
+                attendanceId: record.attendanceId,
+                status: record.status,
+                ...(await buildAttendancePayload(attendance.date, {
+                    checkInTime: hasOwn(record, "checkInTime")
+                        ? record.checkInTime
+                        : attendance.checkInTime,
+                    checkOutTime: hasOwn(record, "checkOutTime")
+                        ? record.checkOutTime
+                        : attendance.checkOutTime,
+                    otStartTime: hasOwn(record, "otStartTime")
+                        ? record.otStartTime
+                        : attendance.otStartTime,
+                    otEndTime: hasOwn(record, "otEndTime")
+                        ? record.otEndTime
+                        : attendance.otEndTime,
+                    otHours: hasOwn(record, "otHours") && record.otHours !== undefined
+                        ? record.otHours
+                        : Number(attendance.otHours ?? 0),
+                    otManualOverride: record.otManualOverride ??
+                        attendance.otManualOverride ??
+                        false,
+                    otOverrideReason: hasOwn(record, "otOverrideReason")
+                        ? record.otOverrideReason
+                        : attendance.otOverrideReason ?? null,
+                })),
+            });
         }
-        return attendance_repository_1.AttendanceRepository.updateMany(records.map((record) => ({
-            attendanceId: record.attendanceId,
-            status: record.status,
-        })));
+        return attendance_repository_1.AttendanceRepository.updateMany(normalizedRecords);
     }
     static async bulkDeleteAttendance(attendanceIds, currentUserRole, reason) {
         if (currentUserRole !== client_1.Role.SUPER_ADMIN) {

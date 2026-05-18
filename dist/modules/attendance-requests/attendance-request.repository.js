@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceRequestRepository = void 0;
 const client_1 = require("@prisma/client");
 const prisma_1 = require("../../config/prisma");
+const overtime_service_1 = require("../../services/overtime.service");
+const stripUndefined = (data) => Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 class AttendanceRequestRepository {
     static findEmployee(employeeId) {
         return prisma_1.prisma.employee.findUnique({
@@ -83,6 +85,16 @@ class AttendanceRequestRepository {
     }
     static approveRequest(params) {
         return prisma_1.prisma.$transaction(async (tx) => {
+            const ot = await overtime_service_1.OvertimeService.calculateForAttendance(stripUndefined({
+                attendanceDate: params.attendanceDate,
+                checkInTime: params.requestedCheckInTime,
+                checkOutTime: params.requestedCheckOutTime,
+                otStartTime: params.requestedOtStartTime,
+                otEndTime: params.requestedOtEndTime,
+                otHours: params.requestedOtHours,
+                otManualOverride: params.requestedOtManualOverride,
+                otOverrideReason: params.requestedOtOverrideReason,
+            }));
             const attendance = await tx.attendance.upsert({
                 where: {
                     employeeId_date: {
@@ -90,14 +102,30 @@ class AttendanceRequestRepository {
                         date: params.attendanceDate,
                     },
                 },
-                update: {
+                update: stripUndefined({
                     status: params.requestedStatus,
-                },
-                create: {
+                    checkInTime: params.requestedCheckInTime,
+                    checkOutTime: params.requestedCheckOutTime,
+                    otStartTime: ot.otStartTime,
+                    otEndTime: ot.otEndTime,
+                    otHours: ot.otHours,
+                    otManualOverride: ot.otManualOverride,
+                    otOverrideReason: ot.otOverrideReason,
+                    otBreakdown: ot.otBreakdown,
+                }),
+                create: stripUndefined({
                     employeeId: params.employeeId,
                     date: params.attendanceDate,
                     status: params.requestedStatus,
-                },
+                    checkInTime: params.requestedCheckInTime,
+                    checkOutTime: params.requestedCheckOutTime,
+                    otStartTime: ot.otStartTime,
+                    otEndTime: ot.otEndTime,
+                    otHours: ot.otHours,
+                    otManualOverride: ot.otManualOverride,
+                    otOverrideReason: ot.otOverrideReason,
+                    otBreakdown: ot.otBreakdown,
+                }),
             });
             const request = await tx.attendanceRequest.update({
                 where: { id: params.requestId },
@@ -126,7 +154,7 @@ class AttendanceRequestRepository {
     }
     static createMany(records) {
         return prisma_1.prisma.$transaction(records.map((record) => prisma_1.prisma.attendanceRequest.create({
-            data: record,
+            data: stripUndefined(record),
         })));
     }
     static deleteOwnPendingRequest(requestId) {
@@ -274,6 +302,18 @@ class AttendanceRequestRepository {
             });
             const attendanceResults = [];
             for (const request of requests) {
+                const ot = await overtime_service_1.OvertimeService.calculateForAttendance(stripUndefined({
+                    attendanceDate: request.attendanceDate,
+                    checkInTime: request.requestedCheckInTime,
+                    checkOutTime: request.requestedCheckOutTime,
+                    otStartTime: request.requestedOtStartTime,
+                    otEndTime: request.requestedOtEndTime,
+                    otHours: request.requestedOtHours === null
+                        ? null
+                        : Number(request.requestedOtHours ?? 0),
+                    otManualOverride: request.requestedOtManualOverride,
+                    otOverrideReason: request.requestedOtOverrideReason,
+                }));
                 const attendance = await tx.attendance.upsert({
                     where: {
                         employeeId_date: {
@@ -281,14 +321,30 @@ class AttendanceRequestRepository {
                             date: request.attendanceDate,
                         },
                     },
-                    update: {
+                    update: stripUndefined({
                         status: request.requestedStatus,
-                    },
-                    create: {
+                        checkInTime: request.requestedCheckInTime,
+                        checkOutTime: request.requestedCheckOutTime,
+                        otStartTime: ot.otStartTime,
+                        otEndTime: ot.otEndTime,
+                        otHours: ot.otHours,
+                        otManualOverride: ot.otManualOverride,
+                        otOverrideReason: ot.otOverrideReason,
+                        otBreakdown: ot.otBreakdown,
+                    }),
+                    create: stripUndefined({
                         employeeId: request.employeeId,
                         date: request.attendanceDate,
                         status: request.requestedStatus,
-                    },
+                        checkInTime: request.requestedCheckInTime,
+                        checkOutTime: request.requestedCheckOutTime,
+                        otStartTime: ot.otStartTime,
+                        otEndTime: ot.otEndTime,
+                        otHours: ot.otHours,
+                        otManualOverride: ot.otManualOverride,
+                        otOverrideReason: ot.otOverrideReason,
+                        otBreakdown: ot.otBreakdown,
+                    }),
                 });
                 attendanceResults.push(attendance);
             }

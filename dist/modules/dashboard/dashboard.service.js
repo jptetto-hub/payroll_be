@@ -77,6 +77,8 @@ class DashboardService {
                 cancelled: countBy(payrollRows, "status", client_1.PayrollStatus.CANCELLED),
                 superseded: countBy(payrollRows, "status", client_1.PayrollStatus.SUPERSEDED),
                 totalSalary: Number(payrollSums._sum.finalSalary ?? 0),
+                otTotalHours: Number(payrollSums._sum.otTotalHours ?? 0),
+                otEarnings: Number(payrollSums._sum.otEarnings ?? 0),
                 totalDeductions: Number(payrollSums._sum.totalDeduction ??
                     payrollSums._sum.advanceDeduction ??
                     0),

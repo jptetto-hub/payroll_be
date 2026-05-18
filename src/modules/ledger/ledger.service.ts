@@ -39,14 +39,18 @@ export class LedgerService {
     employeeId: string;
     payrollId: string;
     grossSalary: number;
+    standardSalary?: number;
+    otEarnings?: number;
     advanceDeduction: number;
     date: Date;
   }) {
     const entries = [];
 
     let balance = await LedgerRepository.getLastBalance(params.employeeId);
+    const standardSalary = params.standardSalary ?? params.grossSalary;
+    const otEarnings = params.otEarnings ?? 0;
 
-    balance += params.grossSalary;
+    balance += standardSalary;
 
     const salaryEntry = await LedgerRepository.create({
       employeeId: params.employeeId,
@@ -54,12 +58,29 @@ export class LedgerService {
       type: LedgerType.SALARY,
       referenceId: params.payrollId,
       debit: 0,
-      credit: params.grossSalary,
+      credit: standardSalary,
       balance,
       date: params.date,
     });
 
     entries.push(salaryEntry);
+
+    if (otEarnings > 0) {
+      balance += otEarnings;
+
+      const otEntry = await LedgerRepository.create({
+        employeeId: params.employeeId,
+        payrollId: params.payrollId,
+        type: "OVERTIME" as LedgerType,
+        referenceId: params.payrollId,
+        debit: 0,
+        credit: otEarnings,
+        balance,
+        date: params.date,
+      });
+
+      entries.push(otEntry);
+    }
 
     if (params.advanceDeduction > 0) {
       balance -= params.advanceDeduction;

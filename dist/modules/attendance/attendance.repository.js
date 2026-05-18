@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceRepository = void 0;
 const prisma_1 = require("../../config/prisma");
+const stripUndefined = (data) => Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined));
 class AttendanceRepository {
     static findEmployee(employeeId) {
         return prisma_1.prisma.employee.findUnique({
@@ -57,9 +58,17 @@ class AttendanceRepository {
                     date: data.date,
                 },
             },
-            update: {
+            update: stripUndefined({
                 status: data.status,
-            },
+                checkInTime: data.checkInTime,
+                checkOutTime: data.checkOutTime,
+                otStartTime: data.otStartTime,
+                otEndTime: data.otEndTime,
+                otHours: data.otHours,
+                otManualOverride: data.otManualOverride,
+                otOverrideReason: data.otOverrideReason,
+                otBreakdown: data.otBreakdown,
+            }),
             create: data,
         });
     }
@@ -172,10 +181,10 @@ class AttendanceRepository {
             ],
         });
     }
-    static update(id, status) {
+    static update(id, data) {
         return prisma_1.prisma.attendance.update({
             where: { id },
-            data: { status },
+            data,
         });
     }
     static delete(id) {
@@ -186,7 +195,17 @@ class AttendanceRepository {
     static updateMany(records) {
         return prisma_1.prisma.$transaction(records.map((record) => prisma_1.prisma.attendance.update({
             where: { id: record.attendanceId },
-            data: { status: record.status },
+            data: stripUndefined({
+                status: record.status,
+                checkInTime: record.checkInTime,
+                checkOutTime: record.checkOutTime,
+                otStartTime: record.otStartTime,
+                otEndTime: record.otEndTime,
+                otHours: record.otHours,
+                otManualOverride: record.otManualOverride,
+                otOverrideReason: record.otOverrideReason,
+                otBreakdown: record.otBreakdown,
+            }),
         })));
     }
     static deleteMany(attendanceIds) {

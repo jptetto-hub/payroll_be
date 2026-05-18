@@ -13,6 +13,8 @@ export declare class DashboardService {
             cancelled: number;
             superseded: number;
             totalSalary: number;
+            otTotalHours: number;
+            otEarnings: number;
             totalDeductions: number;
             carryForwardBalance: number;
         };

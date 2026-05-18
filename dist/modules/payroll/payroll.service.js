@@ -147,6 +147,10 @@ class PayrollService {
                     periodEnd,
                     salaryType: employee.salaryType,
                     grossSalary: preview.result.grossSalary,
+                    standardSalary: preview.result.standardSalary,
+                    otTotalHours: preview.result.otTotalHours,
+                    otHourlyRate: preview.result.otHourlyRate,
+                    otEarnings: preview.result.otEarnings,
                     advanceDeduction: preview.result.advanceDeduction,
                     carryForwardApplied: preview.result.carryForwardApplied,
                     totalDeduction: preview.result.totalDeduction,
@@ -165,6 +169,7 @@ class PayrollService {
                     salaryBreakdown: preview.salaryBreakdown,
                     attendanceBreakdown: preview.attendanceSummary,
                     advanceBreakdown,
+                    overtimeBreakdown: preview.overtimeSummary,
                 },
                 include: {
                     employee: {
@@ -227,6 +232,8 @@ class PayrollService {
             employeeId: payroll.employeeId,
             payrollId: payroll.id,
             grossSalary: Number(payroll.grossSalary),
+            standardSalary: Number(payroll.standardSalary),
+            otEarnings: Number(payroll.otEarnings),
             advanceDeduction: Number(payroll.advanceDeduction),
             date: payroll.periodEnd,
         });
@@ -240,6 +247,10 @@ class PayrollService {
                     payrollId: payroll.id,
                     employeeId: payroll.employeeId,
                     grossSalary: payroll.grossSalary,
+                    standardSalary: payroll.standardSalary,
+                    otTotalHours: payroll.otTotalHours,
+                    otHourlyRate: payroll.otHourlyRate,
+                    otEarnings: payroll.otEarnings,
                     advanceDeduction: payroll.advanceDeduction,
                     carryForwardApplied: payroll.carryForwardApplied,
                     totalDeduction: payroll.totalDeduction,
@@ -506,6 +517,10 @@ class PayrollService {
                 periodEnd: oldPayroll.periodEnd,
                 salaryType: oldPayroll.salaryType,
                 grossSalary: preview.result.grossSalary,
+                standardSalary: preview.result.standardSalary,
+                otTotalHours: preview.result.otTotalHours,
+                otHourlyRate: preview.result.otHourlyRate,
+                otEarnings: preview.result.otEarnings,
                 advanceDeduction: preview.result.advanceDeduction,
                 carryForwardApplied: preview.result.carryForwardApplied,
                 totalDeduction: preview.result.totalDeduction,
@@ -529,6 +544,7 @@ class PayrollService {
                 salaryBreakdown: preview.salaryBreakdown,
                 attendanceBreakdown: preview.attendanceSummary,
                 advanceBreakdown,
+                overtimeBreakdown: preview.overtimeSummary,
             },
         });
         await prisma_1.prisma.attendance.updateMany({

@@ -46,6 +46,26 @@ export class SalaryCalculationRepository {
     });
   }
 
+  static findActivePayrollSnapshot(
+    employeeId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ) {
+    return prisma.payroll.findFirst({
+      where: {
+        employeeId,
+        periodStart,
+        periodEnd,
+        status: {
+          in: [PayrollStatus.GENERATED, PayrollStatus.PAID],
+        },
+      },
+      orderBy: {
+        version: "desc",
+      },
+    });
+  }
+
   static getAdvances(employeeId: string, periodStart: Date, periodEnd: Date) {
     return prisma.advancePayment.findMany({
       where: {

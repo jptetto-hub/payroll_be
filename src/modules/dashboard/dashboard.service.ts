@@ -123,6 +123,8 @@ export class DashboardService {
           PayrollStatus.SUPERSEDED,
         ),
         totalSalary: Number(payrollSums._sum.finalSalary ?? 0),
+        otTotalHours: Number((payrollSums._sum as any).otTotalHours ?? 0),
+        otEarnings: Number((payrollSums._sum as any).otEarnings ?? 0),
         totalDeductions: Number(
           payrollSums._sum.totalDeduction ??
             payrollSums._sum.advanceDeduction ??
