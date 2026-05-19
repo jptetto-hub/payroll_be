@@ -1,13 +1,53 @@
 import { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
 import { AppError } from "../shared/utils/app-error";
+import { AuditLogService } from "../modules/audit-logs/audit-log.service";
 
-export const errorHandler = (
+export const errorHandler = async (
   error: any,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) => {
+  const statusCode =
+    error instanceof AppError
+      ? error.statusCode
+      : error?.statusCode
+        ? error.statusCode
+        : error?.message?.includes("Unauthorized")
+          ? 401
+          : error?.message?.includes("Forbidden")
+            ? 403
+            : error?.message?.includes("not found")
+              ? 404
+              : error instanceof ZodError
+                ? 400
+                : 400;
+
+  AuditLogService.log({
+    userId: req.user?.id,
+    action:
+      error instanceof ZodError
+        ? ("VALIDATION_FAILED" as any)
+        : statusCode === 401 || statusCode === 403
+          ? ("UNAUTHORIZED" as any)
+          : ("FAILED" as any),
+    module: "API",
+    entityId:
+      typeof req.params?.id === "string" ? req.params.id : undefined,
+    description:
+      error instanceof ZodError
+        ? `Validation failed for ${req.method} ${req.originalUrl}`
+        : `${req.method} ${req.originalUrl} failed`,
+    status: "FAILED",
+    newData:
+      error instanceof ZodError
+        ? { issues: error.issues }
+        : { message: error?.message || "Internal server error" },
+  }).catch((auditError) => {
+    console.error("Audit failure log failed:", auditError);
+  });
+
   if (error instanceof ZodError) {
     return res.status(400).json({
       success: false,
@@ -17,19 +57,6 @@ export const errorHandler = (
   }
 
   const message = error?.message || "Internal server error";
-
-  const statusCode =
-    error instanceof AppError
-      ? error.statusCode
-      : error?.statusCode
-        ? error.statusCode
-      : message.includes("Unauthorized")
-        ? 401
-        : message.includes("Forbidden")
-          ? 403
-          : message.includes("not found")
-            ? 404
-            : 400;
 
   return res.status(statusCode).json({
     success: false,

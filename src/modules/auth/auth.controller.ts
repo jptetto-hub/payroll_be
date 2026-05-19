@@ -10,14 +10,17 @@ export class AuthController {
       const result = await AuthService.login(phone, password);
       await AuditLogService.log({
         userId: result.employee.id,
+        employeeId: result.employee.id,
         action: "LOGIN",
         module: "AUTH",
+        entityId: result.employee.id,
+        description: `${result.employee.name} logged in`,
+        status: "SUCCESS",
         newData: {
           employeeId: result.employee.id,
           phone: result.employee.phone,
           role: result.employee.role,
         },
-        ipAddress: req.ip,
       });
       res.json({
         success: true,
@@ -39,6 +42,27 @@ export class AuthController {
         success: true,
         message: "Profile fetched successfully",
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async logout(req: Request, res: Response, next: NextFunction) {
+    try {
+      await AuditLogService.log({
+        userId: req.user.id,
+        employeeId: req.user.id,
+        action: "LOGOUT" as any,
+        module: "AUTH",
+        entityId: req.user.id,
+        description: "User logged out",
+        status: "SUCCESS",
+      });
+
+      res.json({
+        success: true,
+        message: "Logout logged successfully",
       });
     } catch (error) {
       next(error);

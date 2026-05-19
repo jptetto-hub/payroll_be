@@ -8,14 +8,28 @@ const router = Router();
 
 router.use(authMiddleware);
 
-router.get("/", allowRoles(Role.SUPER_ADMIN), AuditLogController.list);
+router.get(
+  "/",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  AuditLogController.list,
+);
+
+router.get(
+  "/export",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  AuditLogController.export,
+);
 
 router.get(
   "/user/:userId",
-  allowRoles(Role.SUPER_ADMIN),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   AuditLogController.listByUser,
 );
 
-router.get("/:id", allowRoles(Role.SUPER_ADMIN), AuditLogController.getById);
+router.get(
+  "/:id",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  AuditLogController.getById,
+);
 
 export default router;

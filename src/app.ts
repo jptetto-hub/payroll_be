@@ -4,6 +4,7 @@ import helmet from "helmet";
 import morgan from "morgan";
 
 import { errorMiddleware } from "./middlewares/error.middleware";
+import { auditContextMiddleware } from "./middlewares/audit-context.middleware";
 import authRoutes from "./modules/auth/auth.routes";
 import rbacTestRoutes from "./modules/auth/rbac-test.routes";
 import employeeRoutes from "./modules/employees/employee.routes";
@@ -23,10 +24,13 @@ import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 
 const app = express();
 
+app.set("trust proxy", true);
+
 app.use(cors());
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(express.json());
+app.use(auditContextMiddleware);
 
 app.get("/health", (_req, res) => {
   res.json({

@@ -66,11 +66,16 @@ enum AuditAction {
   APPROVE
   REJECT
   LOGIN
+  LOGOUT
   PAYROLL_GENERATE
   PAYROLL_RECALCULATE
+  PAYROLL_CANCEL
   ROLE_CHANGE
   STATUS_CHANGE
   EXPORT
+  UNAUTHORIZED
+  VALIDATION_FAILED
+  FAILED
 }
 
 enum AdvanceSettlementStatus {
@@ -112,7 +117,8 @@ model Employee {
   payrolls           Payroll[]
   payslips           Payslip[]
   ledgerEntries      LedgerEntry[]
-  auditLogs          AuditLog[]
+  auditLogs          AuditLog[]             @relation("AuditUserLogs")
+  employeeAuditLogs  AuditLog[]             @relation("AuditEmployeeLogs")
   carryForwards      PayrollCarryForward[]
 
   createdAt DateTime @default(now())
@@ -378,21 +384,40 @@ model LedgerEntry {
 }
 
 model AuditLog {
-  id        String      @id @default(uuid())
-  userId    String?
-  action    AuditAction
-  module    String
-  oldData   Json?
-  newData   Json?
-  ipAddress String?
+  id         String  @id @default(uuid())
+  userId     String?
+  employeeId String?
 
-  user Employee? @relation(fields: [userId], references: [id])
+  action AuditAction
+  module String
+
+  entityId String?
+
+  oldData Json?
+  newData Json?
+
+  description String?
+  status      String?
+
+  ipAddress  String?
+  userAgent  String?
+  deviceInfo String?
+
+  requestId String?
+  sessionId String?
+
+  user     Employee? @relation("AuditUserLogs", fields: [userId], references: [id])
+  employee Employee? @relation("AuditEmployeeLogs", fields: [employeeId], references: [id])
 
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([employeeId])
   @@index([module])
   @@index([action])
+  @@index([entityId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model SystemSetting {
