@@ -3,7 +3,17 @@ import { SchedulerService } from "../modules/scheduler/scheduler.service";
 import { SchedulerRepository } from "../modules/scheduler/scheduler.repository";
 
 export const startPayrollCron = async () => {
-  const setting = await SchedulerRepository.getSystemSetting();
+  let setting;
+
+  try {
+    setting = await SchedulerRepository.getSystemSetting();
+  } catch (error) {
+    console.error(
+      "Payroll scheduler startup check failed. Server will continue without scheduling payroll cron.",
+      error,
+    );
+    return;
+  }
 
   if (setting && !setting.autoPayrollEnabled) {
     console.log("Payroll scheduler skipped: autoPayrollEnabled is false");

@@ -5,5 +5,7 @@ import { startPayrollCron } from "./cron/payroll.cron";
 app.listen(env.port, () => {
   console.log(`Server running on port ${env.port}`);
 
-  startPayrollCron();
+  startPayrollCron().catch((error) => {
+    console.error("Payroll scheduler failed to start", error);
+  });
 });

@@ -6,7 +6,6 @@ import morgan from "morgan";
 import { errorMiddleware } from "./middlewares/error.middleware";
 import { auditContextMiddleware } from "./middlewares/audit-context.middleware";
 import authRoutes from "./modules/auth/auth.routes";
-import rbacTestRoutes from "./modules/auth/rbac-test.routes";
 import employeeRoutes from "./modules/employees/employee.routes";
 import salaryHistoryRoutes from "./modules/salary-history/salary-history.routes";
 import attendanceRoutes from "./modules/attendance/attendance.routes";
@@ -41,8 +40,6 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/auth", authRoutes);
 
-app.use("/api/test", rbacTestRoutes);
-
 app.use("/api/employees", employeeRoutes);
 
 app.use("/api/salary-history", salaryHistoryRoutes);
@@ -70,6 +67,14 @@ app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/settings", settingsRoutes);
 
 app.use("/api/dashboard", dashboardRoutes);
+
+app.use((_req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    errors: [],
+  });
+});
 
 app.use(errorMiddleware);
 

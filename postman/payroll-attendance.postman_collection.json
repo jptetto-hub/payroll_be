@@ -16,8 +16,12 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/health",
-              "host": ["{{baseUrl}}"],
-              "path": ["health"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
             },
             "description": ""
           },
@@ -36,8 +40,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
             },
             "description": "",
             "body": {
@@ -65,48 +75,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/auth/me",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "auth", "me"]
-            },
-            "description": ""
-          },
-          "response": []
-        },
-        {
-          "name": "RBAC Admin Test",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/test/admin-test",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "test", "admin-test"]
-            },
-            "description": ""
-          },
-          "response": []
-        },
-        {
-          "name": "RBAC Super Admin Test",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{token}}",
-                "type": "text"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/api/test/super-admin-test",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "test", "super-admin-test"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
             },
             "description": ""
           },
@@ -135,8 +111,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ]
             },
             "description": "",
             "body": {
@@ -169,8 +150,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ]
             },
             "description": "",
             "body": {
@@ -198,8 +184,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -228,8 +219,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees?search=ramesh",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ],
               "query": [
                 {
                   "key": "search",
@@ -254,8 +250,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees?status=ACTIVE&salaryType=MONTHLY",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees"
+              ],
               "query": [
                 {
                   "key": "status",
@@ -284,8 +285,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -309,8 +316,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -343,8 +356,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees/{{employeeId}}/status",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees", "{{employeeId}}", "status"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}",
+                "status"
+              ]
             },
             "description": "",
             "body": {
@@ -377,8 +397,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/employees/{{employeeId}}/role",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "employees", "{{employeeId}}", "role"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "employees",
+                "{{employeeId}}",
+                "role"
+              ]
             },
             "description": "",
             "body": {
@@ -416,8 +443,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-history"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-history"
+              ]
             },
             "description": "",
             "body": {
@@ -450,8 +482,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-history"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-history"
+              ]
             },
             "description": "",
             "body": {
@@ -479,8 +516,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-history", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-history",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -499,7 +543,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history/employee/{{employeeId}}/current",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "salary-history",
@@ -525,7 +571,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history/employee/{{employeeId}}/resolve?date=2026-05-10",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "salary-history",
@@ -562,8 +610,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history/{{salaryHistoryId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-history", "{{salaryHistoryId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-history",
+                "{{salaryHistoryId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -596,8 +650,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-history/{{salaryHistoryId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-history", "{{salaryHistoryId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-history",
+                "{{salaryHistoryId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -635,8 +695,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance"
+              ]
             },
             "description": "",
             "body": {
@@ -669,8 +734,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/bulk",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "bulk"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "bulk"
+              ]
             },
             "description": "",
             "body": {
@@ -698,8 +769,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -718,7 +796,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/employee/{{employeeId}}/range?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "attendance",
@@ -759,8 +839,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/{{attendanceId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "{{attendanceId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{attendanceId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -793,8 +879,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/bulk/update",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "bulk", "update"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "bulk",
+                "update"
+              ]
             },
             "description": "",
             "body": {
@@ -822,8 +915,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/{{attendanceId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "{{attendanceId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "{{attendanceId}}"
+              ]
             },
             "description": ""
           },
@@ -847,8 +946,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance/bulk/delete",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance", "bulk", "delete"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance",
+                "bulk",
+                "delete"
+              ]
             },
             "description": "",
             "body": {
@@ -886,8 +992,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance-requests"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance-requests"
+              ]
             },
             "description": "",
             "body": {
@@ -920,8 +1031,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance-requests"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance-requests"
+              ]
             },
             "description": "",
             "body": {
@@ -949,8 +1065,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests/my",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance-requests", "my"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance-requests",
+                "my"
+              ]
             },
             "description": ""
           },
@@ -969,8 +1091,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests/pending",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance-requests", "pending"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance-requests",
+                "pending"
+              ]
             },
             "description": ""
           },
@@ -989,7 +1117,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests/{{attendanceRequestId}}/approve",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "attendance-requests",
@@ -1019,7 +1149,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests/{{attendanceRequestId}}/reject",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "attendance-requests",
@@ -1053,8 +1185,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/attendance-requests/{{attendanceRequestId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "attendance-requests", "{{attendanceRequestId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "attendance-requests",
+                "{{attendanceRequestId}}"
+              ]
             },
             "description": ""
           },
@@ -1083,8 +1221,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances"
+              ]
             },
             "description": "",
             "body": {
@@ -1117,8 +1260,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances"
+              ]
             },
             "description": "",
             "body": {
@@ -1146,8 +1294,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -1176,8 +1329,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/my",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances", "my"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances",
+                "my"
+              ]
             },
             "description": ""
           },
@@ -1196,8 +1355,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/{{advanceId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances", "{{advanceId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances",
+                "{{advanceId}}"
+              ]
             },
             "description": ""
           },
@@ -1216,8 +1381,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -1236,7 +1408,9 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/employee/{{employeeId}}/cycle?cycleStartDate=2026-06-01&cycleEndDate=2026-06-30",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "advances",
@@ -1277,8 +1451,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/{{advanceId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances", "{{advanceId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances",
+                "{{advanceId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -1311,8 +1491,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/advances/{{advanceId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "advances", "{{advanceId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "advances",
+                "{{advanceId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -1350,8 +1536,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/salary-calculation/preview",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "salary-calculation", "preview"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "salary-calculation",
+                "preview"
+              ]
             },
             "description": "",
             "body": {
@@ -1389,8 +1581,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/generate",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "generate"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "generate"
+              ]
             },
             "description": "",
             "body": {
@@ -1423,8 +1621,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/generate",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "generate"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "generate"
+              ]
             },
             "description": "",
             "body": {
@@ -1452,8 +1656,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -1482,8 +1691,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -1507,8 +1723,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/{{payrollId}}/recalculate",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "{{payrollId}}", "recalculate"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "{{payrollId}}",
+                "recalculate"
+              ]
             },
             "description": "",
             "body": {
@@ -1541,8 +1764,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/{{payrollId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "{{payrollId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "{{payrollId}}"
+              ]
             },
             "description": "",
             "body": {
@@ -1570,8 +1799,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payroll/{{payrollId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payroll", "{{payrollId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payroll",
+                "{{payrollId}}"
+              ]
             },
             "description": ""
           },
@@ -1595,8 +1830,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payslips?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payslips"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payslips"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -1625,8 +1865,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payslips/my",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payslips", "my"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payslips",
+                "my"
+              ]
             },
             "description": ""
           },
@@ -1645,8 +1891,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payslips/payroll/{{payrollId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payslips", "payroll", "{{payrollId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payslips",
+                "payroll",
+                "{{payrollId}}"
+              ]
             },
             "description": ""
           },
@@ -1665,8 +1918,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payslips/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payslips", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payslips",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -1685,8 +1945,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/payslips/{{payslipId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "payslips", "{{payslipId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payslips",
+                "{{payslipId}}"
+              ]
             },
             "description": ""
           },
@@ -1710,8 +1976,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/ledger?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ledger"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ledger"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -1740,8 +2011,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/ledger/my",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ledger", "my"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ledger",
+                "my"
+              ]
             },
             "description": ""
           },
@@ -1760,8 +2037,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/ledger/employee/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ledger", "employee", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ledger",
+                "employee",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -1780,8 +2064,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/ledger/payroll/{{payrollId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "ledger", "payroll", "{{payrollId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ledger",
+                "payroll",
+                "{{payrollId}}"
+              ]
             },
             "description": ""
           },
@@ -1805,8 +2096,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/scheduler/run-payroll",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "scheduler", "run-payroll"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scheduler",
+                "run-payroll"
+              ]
             },
             "description": ""
           },
@@ -1825,8 +2122,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/scheduler/runs?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "scheduler", "runs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scheduler",
+                "runs"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -1860,8 +2163,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/salary?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "salary"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "salary"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -1890,8 +2199,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/salary/export?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "salary", "export"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "salary",
+                "export"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -1920,8 +2236,16 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/salary/export/excel?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "salary", "export", "excel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "salary",
+                "export",
+                "excel"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -1950,8 +2274,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/attendance?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "attendance"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "attendance"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -1980,8 +2310,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/attendance/export?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "attendance", "export"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "attendance",
+                "export"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2010,8 +2347,16 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/attendance/export/excel?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "attendance", "export", "excel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "attendance",
+                "export",
+                "excel"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2040,8 +2385,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/advance?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "advance"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "advance"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2070,8 +2421,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/advance/export?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "advance", "export"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "advance",
+                "export"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2100,8 +2458,16 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/advance/export/excel?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "advance", "export", "excel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "advance",
+                "export",
+                "excel"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2130,8 +2496,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/all-in-one?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "all-in-one"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "all-in-one"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2160,8 +2532,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/all-in-one/export?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "all-in-one", "export"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "all-in-one",
+                "export"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2190,8 +2569,16 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/reports/all-in-one/export/excel?from=2026-05-01&to=2026-05-31",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "reports", "all-in-one", "export", "excel"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "reports",
+                "all-in-one",
+                "export",
+                "excel"
+              ],
               "query": [
                 {
                   "key": "from",
@@ -2225,8 +2612,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/audit-logs?page=1&limit=10",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audit-logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-logs"
+              ],
               "query": [
                 {
                   "key": "page",
@@ -2255,8 +2647,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/audit-logs?module=PAYROLL",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audit-logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-logs"
+              ],
               "query": [
                 {
                   "key": "module",
@@ -2281,8 +2678,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/audit-logs?action=PAYROLL_GENERATE",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audit-logs"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-logs"
+              ],
               "query": [
                 {
                   "key": "action",
@@ -2307,8 +2709,15 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/audit-logs/user/{{employeeId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audit-logs", "user", "{{employeeId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-logs",
+                "user",
+                "{{employeeId}}"
+              ]
             },
             "description": ""
           },
@@ -2327,8 +2736,14 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/audit-logs/{{auditLogId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "audit-logs", "{{auditLogId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "audit-logs",
+                "{{auditLogId}}"
+              ]
             },
             "description": ""
           },
@@ -2352,8 +2767,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
             },
             "description": ""
           },
@@ -2377,8 +2797,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "settings"
+              ]
             },
             "description": "",
             "body": {
@@ -2411,8 +2836,13 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/api/dashboard",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "dashboard"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard"
+              ]
             },
             "description": ""
           },

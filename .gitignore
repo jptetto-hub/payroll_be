@@ -6,4 +6,3 @@ dist-ssr
 .env
 
 /src/generated/prisma
-
