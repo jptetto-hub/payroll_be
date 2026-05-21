@@ -20,6 +20,7 @@ import reportsRoutes from "./modules/reports/reports.routes";
 import auditLogRoutes from "./modules/audit-logs/audit-log.routes";
 import settingsRoutes from "./modules/settings/settings.routes";
 import dashboardRoutes from "./modules/dashboard/dashboard.routes";
+import rbacTestRoutes from "./modules/auth/rbac-test.routes";
 
 const app = express();
 
@@ -39,6 +40,8 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+
+app.use("/api/test", rbacTestRoutes);
 
 app.use("/api/employees", employeeRoutes);
 
