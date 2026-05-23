@@ -8,10 +8,39 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import { CacheService } from "../../utils/cache";
+
+const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
+const SETTINGS_CACHE_TTL = 60 * 10;
 
 export class SettingsService {
   static async getSettings() {
-    return SettingsRepository.get();
+    return this.getSystemSettingCached();
+  }
+
+  static async getSystemSettingCached() {
+    const cached = await CacheService.get<any>(SYSTEM_SETTINGS_CACHE_KEY);
+
+    if (cached) {
+      return cached;
+    }
+
+    const setting = await SettingsRepository.get();
+
+    await CacheService.set(
+      SYSTEM_SETTINGS_CACHE_KEY,
+      setting,
+      SETTINGS_CACHE_TTL,
+    );
+
+    return setting;
+  }
+
+  static async clearSystemSettingCache() {
+    await Promise.all([
+      CacheService.del(SYSTEM_SETTINGS_CACHE_KEY),
+      CacheService.delByPattern("payroll-cycles:*"),
+    ]);
   }
 
   static async updateSettings(data: {
@@ -23,7 +52,11 @@ export class SettingsService {
       throw new Error("At least one setting field is required");
     }
 
-    return SettingsRepository.update(data);
+    const setting = await SettingsRepository.update(data);
+
+    await this.clearSystemSettingCache();
+
+    return setting;
   }
 
   static async listWorkHourSettings(query: any) {
@@ -66,7 +99,7 @@ export class SettingsService {
       throw new Error("Work-hour setting already exists for effective date");
     }
 
-    return SettingsRepository.createWorkHourSetting({
+    const setting = await SettingsRepository.createWorkHourSetting({
       workStartTime,
       workEndTime,
       standardMinutes,
@@ -74,6 +107,10 @@ export class SettingsService {
       note: data.note ?? null,
       createdById: createdById ?? null,
     });
+
+    await CacheService.delByPattern("work-hours:*");
+
+    return setting;
   }
 
   static async updateWorkHourSetting(
@@ -114,7 +151,7 @@ export class SettingsService {
       }
     }
 
-    return SettingsRepository.updateWorkHourSetting(id, {
+    const setting = await SettingsRepository.updateWorkHourSetting(id, {
       ...(data.workStartTime && { workStartTime }),
       ...(data.workEndTime && { workEndTime }),
       ...(data.workStartTime || data.workEndTime ? { standardMinutes } : {}),
@@ -124,6 +161,10 @@ export class SettingsService {
         note: data.note ?? null,
       }),
     });
+
+    await CacheService.delByPattern("work-hours:*");
+
+    return setting;
   }
 
   static async deleteWorkHourSetting(id: string) {
@@ -133,6 +174,10 @@ export class SettingsService {
       throw new Error("Work-hour setting not found");
     }
 
-    return SettingsRepository.deleteWorkHourSetting(id);
+    const setting = await SettingsRepository.deleteWorkHourSetting(id);
+
+    await CacheService.delByPattern("work-hours:*");
+
+    return setting;
   }
 }

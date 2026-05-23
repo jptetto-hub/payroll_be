@@ -1,9 +1,18 @@
 import { LedgerType, Prisma } from "@prisma/client";
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 
 export class LedgerRepository {
   static async getLastBalance(employeeId: string) {
     const last = await prisma.ledgerEntry.findFirst({
+      where: { employeeId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return last ? Number(last.balance) : 0;
+  }
+
+  static async getLastBalanceTx(tx: any, employeeId: string) {
+    const last = await tx.ledgerEntry.findFirst({
       where: { employeeId },
       orderBy: { createdAt: "desc" },
     });
@@ -26,47 +35,92 @@ export class LedgerRepository {
     });
   }
 
+  static createManyTx(
+    tx: any,
+    data: {
+      employeeId: string;
+      payrollId?: string;
+      type: LedgerType;
+      referenceId?: string;
+      debit?: number;
+      credit?: number;
+      balance: number;
+      date: Date;
+    }[],
+  ) {
+    return tx.ledgerEntry.createMany({
+      data,
+    });
+  }
+
   static listAll(params: {
-    skip: number;
     take: number;
+    cursor?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     payrollId?: string;
     type?: LedgerType;
+    from?: string;
+    to?: string;
   }) {
     const where = {
       ...(params.employeeWhere && { employee: params.employeeWhere }),
       ...(params.payrollId && { payrollId: params.payrollId }),
       ...(params.type && { type: params.type }),
+      ...((params.from || params.to) && {
+        date: {
+          ...(params.from && { gte: new Date(`${params.from}T00:00:00.000Z`) }),
+          ...(params.to && { lte: new Date(`${params.to}T23:59:59.999Z`) }),
+        },
+      }),
     };
 
-    return prisma.$transaction([
-      prisma.ledgerEntry.findMany({
+    return readPrisma.ledgerEntry.findMany({
         where,
-        skip: params.skip,
         take: params.take,
-        include: {
+        ...(params.cursor
+          ? {
+              skip: 1,
+              cursor: { id: params.cursor },
+            }
+          : {}),
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          employeeId: true,
+          payrollId: true,
+          type: true,
+          referenceId: true,
+          debit: true,
+          credit: true,
+          balance: true,
+          date: true,
+          createdAt: true,
           employee: {
             select: {
               id: true,
               employeeCode: true,
               name: true,
-              phone: true,
               salaryType: true,
             },
           },
-          payroll: true,
+          payroll: {
+            select: {
+              id: true,
+              periodStart: true,
+              periodEnd: true,
+              status: true,
+              version: true,
+            },
+          },
         },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.ledgerEntry.count({ where }),
-    ]);
+      });
   }
 
   static listByEmployee(
     employeeId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.ledgerEntry.findMany({
+    return readPrisma.ledgerEntry.findMany({
       where: { employeeId },
       include: {
         payroll: true,
@@ -80,7 +134,7 @@ export class LedgerRepository {
   }
 
   static countByEmployee(employeeId: string) {
-    return prisma.ledgerEntry.count({
+    return readPrisma.ledgerEntry.count({
       where: { employeeId },
     });
   }
@@ -89,7 +143,7 @@ export class LedgerRepository {
     payrollId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.ledgerEntry.findMany({
+    return readPrisma.ledgerEntry.findMany({
       where: { payrollId },
       ...(pagination && {
         skip: pagination.skip,
@@ -100,13 +154,13 @@ export class LedgerRepository {
   }
 
   static countByPayroll(payrollId: string) {
-    return prisma.ledgerEntry.count({
+    return readPrisma.ledgerEntry.count({
       where: { payrollId },
     });
   }
 
   static findEmployee(employeeId: string) {
-    return prisma.employee.findUnique({
+    return readPrisma.employee.findUnique({
       where: { id: employeeId },
       select: {
         id: true,
@@ -117,7 +171,7 @@ export class LedgerRepository {
   }
 
   static findPayroll(payrollId: string) {
-    return prisma.payroll.findUnique({
+    return readPrisma.payroll.findUnique({
       where: { id: payrollId },
       include: {
         employee: {

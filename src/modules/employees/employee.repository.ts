@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 import { EmployeeStatus, Role, SalaryType } from "@prisma/client";
 
 type CreateEmployeeInput = {
@@ -33,14 +33,14 @@ export class EmployeeRepository {
   }
 
   static findById(id: string) {
-    return prisma.employee.findUnique({
+    return readPrisma.employee.findUnique({
       where: { id },
       select: this.defaultSelect(),
     });
   }
 
   static countEmployees() {
-    return prisma.employee.count();
+    return readPrisma.employee.count();
   }
 
   static list(params: {
@@ -77,16 +77,65 @@ export class EmployeeRepository {
       }),
     };
 
-    return prisma.$transaction([
-      prisma.employee.findMany({
+    return Promise.all([
+      readPrisma.employee.findMany({
         where,
         skip: params.skip,
         take: params.take,
         orderBy: { createdAt: "desc" },
         select: this.defaultSelect(),
       }),
-      prisma.employee.count({ where }),
+      readPrisma.employee.count({ where }),
     ]);
+  }
+
+  static options(params: { search?: string; limit: number }) {
+    const tokens = params.search
+      ?.split(/\s+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+
+    return readPrisma.employee.findMany({
+      where: {
+        status: EmployeeStatus.ACTIVE,
+        ...(tokens?.length && {
+          AND: tokens.map((token) => ({
+            OR: [
+              { name: { contains: token, mode: "insensitive" as const } },
+              {
+                employeeCode: {
+                  contains: token,
+                  mode: "insensitive" as const,
+                },
+              },
+              { phone: { contains: token } },
+              {
+                department: {
+                  contains: token,
+                  mode: "insensitive" as const,
+                },
+              },
+              {
+                designation: {
+                  contains: token,
+                  mode: "insensitive" as const,
+                },
+              },
+            ],
+          })),
+        }),
+      },
+      take: Math.min(Math.max(params.limit, 1), 50),
+      orderBy: [{ employeeCode: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        employeeCode: true,
+        salaryType: true,
+        status: true,
+        role: true,
+      },
+    });
   }
 
   static update(id: string, data: any) {

@@ -1,0 +1,785 @@
+PAYROLL ATTENDANCE BACKEND - STEP 1 TO STEP 25 IMPLEMENTATION SUMMARY
+
+Purpose
+-------
+This document summarizes the full backend performance, scalability, reliability, security, observability, and production-readiness work completed from Step 1 to Step 25.
+
+The main goal was to make payroll generation and read-heavy APIs safer for large data volumes, especially for employee counts growing from thousands toward 1 lakh+ records, while keeping Supabase Free Tier safe during development.
+
+
+STEP 1 - MANUAL SCHEDULER API MOVED TO BACKGROUND JOB
+-----------------------------------------------------
+Problem:
+The manual scheduler API was processing payroll directly inside the HTTP request. This caused timeout, fetch failed, and stress test failures.
+
+Business logic change:
+Manual scheduler trigger no longer generates payroll inside the API request.
+
+New behavior:
+POST /api/scheduler/run
+
+Now does:
+1. Checks if a scheduler run is already PENDING or RUNNING.
+2. Creates a SchedulerRun record.
+3. Adds a BullMQ job.
+4. Returns immediately with HTTP 202.
+
+Response:
+{
+  "success": true,
+  "message": "Payroll scheduler started",
+  "jobId": "scheduler_run_id",
+  "status": "PENDING"
+}
+
+New/updated APIs:
+POST /api/scheduler/run
+GET /api/scheduler/runs/:id
+GET /api/scheduler/runs
+
+New infrastructure:
+BullMQ
+Redis
+Payroll scheduler worker
+
+Files added/updated:
+src/jobs/payrollScheduler.queue.ts
+src/jobs/payrollScheduler.worker.ts
+src/jobs/payrollScheduler.processor.ts
+src/worker.ts
+src/modules/scheduler/*
+
+
+STEP 2 - DATABASE INDEXES
+-------------------------
+Purpose:
+Reduce full-table scans for payroll, attendance, employees, advances, reports, payslips, ledger, audit logs, and scheduler history.
+
+Indexes added to:
+Employee
+SalaryHistory
+Attendance
+AttendanceRequest
+AdvancePayment
+Payroll
+PayrollCarryForward
+Payslip
+LedgerEntry
+AuditLog
+WorkHourSetting
+SchedulerRun
+
+Performance impact:
+Faster payroll duplicate checks.
+Faster attendance range reads.
+Faster advance lookup.
+Faster payroll list/report APIs.
+Faster audit log filters.
+Faster dashboard/report reads.
+
+
+STEP 3 - BATCH EMPLOYEE PROCESSING
+----------------------------------
+Problem:
+Scheduler was loading all active employees at once.
+
+Change:
+Scheduler now processes active employees in batches.
+
+Default:
+SCHEDULER_BATCH_SIZE=50 for Supabase Free Tier.
+
+Production later:
+SCHEDULER_BATCH_SIZE=500 after DB upgrade/testing.
+
+Repository methods added:
+countActiveEmployees()
+getActiveEmployeesBatch()
+
+Result:
+Memory pressure reduced.
+Scheduler can process large employee counts more safely.
+
+
+STEP 4 - REMOVE N+1 QUERIES FROM SCHEDULER
+------------------------------------------
+Problem:
+For each employee, scheduler queried salary history and latest payroll separately.
+
+Change:
+Scheduler now preloads data per batch:
+1. First salary histories for all employees in batch.
+2. Latest payrolls for all employees in batch.
+
+Added methods:
+getFirstSalaryHistories(employeeIds)
+getLatestPayrolls(employeeIds)
+
+Result:
+Before:
+100 employees = 100 salary queries + 100 latest payroll queries.
+
+After:
+100 employees = 1 salary query + 1 latest payroll query.
+
+
+STEP 5 - OPTIMIZE EXISTING PAYROLL DUPLICATE CHECK
+--------------------------------------------------
+Problem:
+Scheduler called findPayroll() inside every employee-period loop.
+
+Change:
+Existing payrolls are preloaded per batch into a Map.
+
+Added methods:
+getExistingPayrollsForBatch()
+getPayrollPeriodKey()
+
+Result:
+Duplicate checks are done from memory instead of repeated DB queries.
+
+
+STEP 6 - OPTIMIZE PAYROLL CALCULATION INTERNALS
+-----------------------------------------------
+Problem:
+Salary calculation fetched work-hour/overtime settings inside the daily loop.
+
+Change:
+Work-hour settings are loaded once per payroll period.
+
+Added:
+OvertimeService.getSettingsForDateRange()
+OvertimeService.resolveSettingFromList()
+
+Also optimized repository selects:
+Salary histories now select only needed fields.
+Attendance now selects only needed fields.
+Advances now select only needed fields.
+
+Payslip optimization:
+PayrollService.generate() now accepts:
+createPayslip?: boolean
+
+Scheduler passes:
+createPayslip: false
+
+Result:
+No DB query inside each working date loop for work-hour settings.
+Scheduler payroll generation skips synchronous payslip creation.
+
+
+STEP 7 - PAYSLIP GENERATION BACKGROUND JOB
+------------------------------------------
+Problem:
+Payslip creation slowed payroll generation.
+
+Change:
+Payslip generation moved to BullMQ background job for scheduler-generated payroll.
+
+Added:
+PayslipStatus enum
+Payslip status fields:
+status
+pdfGeneratedAt
+errorMessage
+
+New files:
+src/jobs/payslip.queue.ts
+src/jobs/payslip.worker.ts
+
+New API:
+POST /api/payslips/:id/retry
+
+Behavior:
+Normal payroll can still create payslip immediately if configured.
+Scheduler payroll enqueues payslip generation job.
+
+
+STEP 8 - OPTIMIZE LIST APIS AND REPORTS
+---------------------------------------
+Rules added:
+1. Pagination required.
+2. Max limit enforced.
+3. Cursor pagination for huge tables.
+4. Select only required fields.
+5. Avoid heavy include.
+6. Avoid count() on huge APIs unless needed.
+7. Reports require date range.
+8. Exports should be background jobs later.
+
+Utilities added:
+pagination utilities
+cursor pagination utilities
+
+Applied to:
+Employees
+Attendance
+Attendance requests
+Advances
+Payroll
+Payslips
+Ledger
+Audit logs
+Reports
+
+New/updated API behavior:
+List APIs no longer return unlimited rows.
+Cursor APIs return nextCursor and hasNextPage.
+
+
+STEP 9 - SLOW QUERY LOGGING AND PERFORMANCE TIMING
+--------------------------------------------------
+Added:
+Slow Prisma query logging.
+Slow API request logging.
+PerformanceTimer helper.
+
+Env:
+ENABLE_PRISMA_QUERY_LOG=true/false
+SLOW_QUERY_MS=500
+SLOW_API_MS=1000
+ENABLE_PERFORMANCE_LOG=true/false
+
+PerformanceTimer used in:
+PayrollService.generate()
+SalaryCalculationService.calculatePreview()
+SchedulerService.runAutoPayrollScheduler()
+PayslipService.createFromPayroll()
+
+Result:
+When stress test fails, logs show whether the issue is:
+API route
+DB query
+salary calculation
+attendance fetch
+advance fetch
+transaction
+ledger
+payslip
+
+
+STEP 10 - DASHBOARD SUMMARY CACHE TABLE
+---------------------------------------
+Problem:
+Dashboard used expensive count/sum/group queries.
+
+Change:
+Added DashboardSummary table.
+
+Dashboard now reads cached summary row.
+Heavy summary refresh is separate.
+
+New APIs:
+GET /api/dashboard/summary
+POST /api/dashboard/summary/refresh
+
+Model:
+DashboardSummary
+DashboardSummaryType
+
+Result:
+Dashboard response stays fast even as data grows.
+
+
+STEP 11 - RAW SQL REPORT OPTIMIZATION
+-------------------------------------
+Problem:
+Reports should not load many rows into Node.js and reduce in memory.
+
+Change:
+Heavy report summaries now use PostgreSQL aggregation with raw SQL.
+
+Reports added/optimized:
+GET /api/reports/payroll-summary
+GET /api/reports/employee-payroll
+GET /api/reports/ledger-summary
+GET /api/reports/attendance-summary
+GET /api/reports/advance-outstanding
+
+Utilities:
+reportValidation.ts
+serializeBigInt.ts
+
+Result:
+Postgres computes totals and grouped summaries.
+Backend returns smaller response.
+
+
+STEP 12 - BULK WRITE OPTIMIZATION
+---------------------------------
+Principle:
+Keep financial payroll creation safe in transaction.
+Batch only safe log/item/ledger writes.
+
+Changes:
+Ledger entries use createMany where safe.
+Ledger creation can run inside payroll transaction.
+SchedulerRunItem uses createMany per batch.
+Scheduler progress updates once per batch, not per employee.
+
+Important:
+No huge transaction for 1 lakh employees.
+Payroll financial writes remain transaction-per-payroll.
+
+
+STEP 13 - CONNECTION POOL AND CONCURRENCY SAFETY
+------------------------------------------------
+Purpose:
+Avoid overwhelming Supabase Free Tier or small DB.
+
+Env defaults:
+SCHEDULER_BATCH_SIZE=50
+SCHEDULER_MAX_RESULT_ITEMS=500
+PAYROLL_WORKER_CONCURRENCY=1
+PAYROLL_WORKER_RATE_LIMIT_MAX=1
+PAYROLL_WORKER_RATE_LIMIT_DURATION=1000
+PAYSLIP_WORKER_CONCURRENCY=1
+PAYSLIP_WORKER_RATE_LIMIT_MAX=2
+PAYSLIP_WORKER_RATE_LIMIT_DURATION=1000
+
+DATABASE_URL should include:
+connection_limit=5
+pool_timeout=30
+
+Added:
+Queue rate limits.
+Duplicate running scheduler protection.
+Timeout helper for non-financial long operations.
+
+
+STEP 14 - PAYROLL IDEMPOTENCY PROTECTION
+----------------------------------------
+Problem:
+Duplicate payroll can happen through double-click, retries, overlapping jobs, or timeouts.
+
+Change:
+Added Payroll.activePayrollKey.
+
+Rule:
+For active payroll:
+activePayrollKey = employeeId_periodStart_periodEnd
+
+For cancelled payroll:
+activePayrollKey = null
+
+Unique constraint:
+@@unique([activePayrollKey])
+
+Behavior:
+Only one active non-cancelled payroll can exist for employee + period.
+Cancelled payroll releases the key and allows regeneration.
+
+Added helper:
+buildActivePayrollKey()
+
+Also handles Prisma P2002 unique constraint error.
+
+
+STEP 15 - LOAD TEST SEEDING AND K6 STRATEGY
+-------------------------------------------
+Added load-test seed script:
+scripts/seed-load-test-data.ts
+
+Script:
+npm run seed:load
+
+Creates:
+Super admin test user.
+Employees.
+Salary history.
+Attendance records.
+
+Added k6 folder:
+tests/k6/
+
+Initial k6 tests:
+employee-list
+scheduler-start
+scheduler-status
+payroll-generate-single
+report-payroll-summary
+
+Principle:
+Do not test full scheduler generation as one HTTP request.
+Test only scheduler job start and status.
+
+
+STEP 16 - ARCHIVING AND RETENTION STRATEGY
+------------------------------------------
+Purpose:
+Keep active tables smaller over time.
+
+Safe archive targets:
+AuditLog
+SchedulerRunItem
+Export jobs/files later
+
+Do not aggressively delete:
+Payroll
+Payslip
+LedgerEntry
+AdvancePayment
+SalaryHistory
+Attendance without business approval
+
+Added:
+AuditLogArchive model.
+Maintenance cleanup service.
+
+New APIs:
+POST /api/maintenance/cleanup
+
+Retention env:
+AUDIT_LOG_RETENTION_DAYS
+SCHEDULER_ITEM_RETENTION_DAYS
+EXPORT_FILE_RETENTION_DAYS
+FAILED_JOB_RETENTION_DAYS
+
+
+STEP 17 - DATABASE PARTITIONING STRATEGY
+----------------------------------------
+Purpose:
+Prepare for very large tables.
+
+Partition candidates:
+Attendance
+AuditLog
+LedgerEntry
+Payroll
+SchedulerRunItem
+
+Added:
+Partition strategy doc.
+Partition service for creating monthly partitions.
+
+New API:
+POST /api/maintenance/partitions/next-month
+
+Important:
+Do not rush partitioning on Supabase Free Tier.
+Use when data grows large or when moving to paid/dedicated Postgres.
+
+
+STEP 18 - READ/WRITE DATABASE SPLIT
+-----------------------------------
+Purpose:
+Separate read-heavy APIs from write-heavy payroll processing.
+
+Added:
+readPrisma
+
+Env:
+READ_DATABASE_URL
+
+Behavior:
+If READ_DATABASE_URL is empty, readPrisma falls back to DATABASE_URL.
+
+Write paths use prisma:
+Payroll generation
+Attendance approval
+Advance settlement
+Scheduler worker
+Maintenance
+Auth
+Duplicate checks
+
+Read-heavy paths use readPrisma:
+Reports
+Dashboard
+Audit logs
+Ledger lists
+Payslip lists
+Employee options/list
+Payroll lists
+Attendance lists
+
+
+STEP 19 - REDIS CACHE LAYER
+---------------------------
+Purpose:
+Avoid repeated DB reads for safe frequently used data.
+
+Added:
+src/config/redis.ts
+src/utils/cache.ts
+
+Cached:
+System settings
+Work-hour settings
+Employee options/dropdown
+Dashboard summary
+
+Invalidation added for:
+Settings update
+Work-hour create/update/delete
+Employee create/update/status/role
+Payroll generate/cancel/recalculate
+Attendance request create/approve/reject
+Advance create/update/delete
+
+Env:
+ENABLE_REDIS_CACHE=true
+CACHE_DEFAULT_TTL_SECONDS=300
+
+Important:
+Do not cache financial duplicate checks, auth verification, attendance lock state, or settlement state.
+
+
+STEP 20 - COMPRESSION, CACHE HEADERS, PAYLOAD SIZE
+--------------------------------------------------
+Added:
+compression middleware.
+Request body size limit.
+Cache headers middleware.
+No-store middleware.
+Response size warning middleware.
+
+Env:
+RESPONSE_SIZE_WARN_BYTES=500000
+
+New files:
+cacheHeaders.middleware.ts
+responseSize.middleware.ts
+
+Applied:
+Employee options gets short cache header.
+Dashboard summary gets short cache header.
+Payroll generate uses no-store.
+
+Health APIs added:
+GET /api/health
+GET /api/health/db
+GET /api/health/redis
+
+
+STEP 21 - PRODUCTION DEPLOYMENT CHECKLIST
+-----------------------------------------
+Added production deployment doc:
+docs/PRODUCTION_DEPLOYMENT_CHECKLIST.md
+
+Recommended services:
+payroll-api
+payroll-worker
+PostgreSQL
+Redis
+
+Production commands:
+npm run build
+npx prisma migrate deploy
+npx prisma generate
+npm run start
+npm run worker
+
+Rule:
+Do not run workers inside API service in production.
+
+
+STEP 22 - BACKUP AND RESTORE PLAN
+---------------------------------
+Added backup scripts:
+scripts/backup-db.sh
+scripts/restore-db.sh
+
+Package scripts:
+npm run db:backup
+npm run db:restore -- backups/file.dump
+
+Added doc:
+docs/BACKUP_RESTORE_PLAN.md
+
+Recommended:
+Back up before migrations.
+Store backups off-server.
+Encrypt payroll backups.
+Test restore flow.
+
+
+STEP 23 - SECURITY HARDENING
+----------------------------
+Added/verified:
+Helmet security headers.
+Strict CORS via CORS_ORIGIN.
+Rate limiting.
+Auth-specific rate limit.
+Sensitive action rate limit.
+Zod validation.
+Production-safe error responses.
+Audit log sensitive-data redaction.
+Bcrypt rounds from env.
+IP/user-agent audit context.
+
+New files:
+rateLimit.middleware.ts
+sanitize-audit-data.util.ts
+docs/SECURITY_HARDENING.md
+
+Env:
+CORS_ORIGIN
+GENERAL_RATE_LIMIT_MAX
+AUTH_RATE_LIMIT_MAX
+SENSITIVE_ACTION_RATE_LIMIT_MAX
+BCRYPT_ROUNDS
+
+Sensitive routes protected:
+Payroll generate/cancel/recalculate
+Scheduler run
+Settings mutation
+Maintenance cleanup/partition
+
+
+STEP 24 - OBSERVABILITY, ERROR TRACKING, ALERTING
+-------------------------------------------------
+Added:
+Pino structured logger.
+Sentry integration.
+Request ID middleware.
+Structured slow API logs.
+Structured slow Prisma query logs.
+Worker failed job logging.
+Queue health APIs.
+System health API.
+Worker heartbeat.
+
+New APIs:
+GET /api/health/system
+GET /api/health/queues
+GET /api/health/workers
+
+New model:
+WorkerHeartbeat
+
+New migration:
+20260521120000_add_worker_heartbeat
+
+New doc:
+docs/OBSERVABILITY.md
+
+Env:
+LOG_LEVEL
+LOG_API_REQUESTS
+SENTRY_DSN
+
+Alert targets:
+API errors
+Slow APIs
+Slow DB queries
+Worker failures
+Scheduler failures
+Redis issues
+DB health failures
+Queue backlog
+Stale worker heartbeat
+
+
+STEP 25 - FINAL PERFORMANCE CHECKLIST AND TEST ORDER
+----------------------------------------------------
+Added:
+docs/FINAL_PERFORMANCE_CHECKLIST.md
+
+Added k6 tests:
+login.test.js
+employee-options.test.js
+attendance-range.test.js
+payslip-list.test.js
+report-ledger-summary.test.js
+
+New package scripts:
+npm run k6:login
+npm run k6:employee-options
+npm run k6:attendance-range
+npm run k6:payslip-list
+npm run k6:report-ledger-summary
+
+Final test order:
+1. Login API
+2. Employee list API
+3. Employee options/dropdown API
+4. Attendance range API
+5. Payroll single generate API
+6. Manual scheduler start API
+7. Scheduler status API
+8. Payslip list API
+9. Payroll summary report API
+10. Ledger summary report API
+
+Thresholds:
+Login API: p95 < 1000ms
+List APIs: p95 < 1000ms
+Dropdown APIs: p95 < 500ms
+Scheduler start API: p95 < 500ms
+Scheduler status API: p95 < 500ms
+Payroll single generate: p95 < 3000ms
+Report summary APIs: p95 < 2000ms
+
+
+FINAL BUSINESS LOGIC SUMMARY
+----------------------------
+Manual scheduler is now asynchronous.
+Payroll generation remains financially consistent with transactions.
+Duplicate active payrolls are blocked at DB level.
+Cancelled payroll can be regenerated.
+Payslips are generated in background for scheduler payrolls.
+Ledger creation remains part of financial flow.
+Attendance locking and advance settlement remain protected.
+Scheduler progress is tracked with SchedulerRun and SchedulerRunItem.
+Dashboard reads cached summary instead of recalculating every request.
+Reports use database-level aggregation instead of Node.js reduction.
+Maintenance can archive old audit logs and clean scheduler items.
+Workers have health/heartbeat tracking.
+
+
+FINAL PERFORMANCE SUMMARY
+-------------------------
+API response speed improved by:
+Async scheduler start.
+Background jobs.
+Batch employee processing.
+N+1 query reduction.
+DB indexes.
+Preloading salary/latest payroll/existing payroll.
+Optimized payroll calculation.
+Skipping synchronous payslip generation.
+Pagination/cursor pagination.
+Raw SQL reports.
+Dashboard summary cache.
+Redis cache.
+Compression.
+Payload size warnings.
+Read/write DB client split.
+Controlled worker concurrency.
+
+
+FINAL PRODUCTION SUMMARY
+------------------------
+Production should run:
+API service: npm run start
+Worker service: npm run worker
+PostgreSQL
+Redis
+
+Cron runs in the worker process only, not in the API process.
+
+Use:
+npx prisma migrate deploy
+npx prisma generate
+
+Do not run workers inside API server process.
+
+Use backup before migrations.
+Use Sentry/logs for observability.
+Use Redis queue health and worker heartbeat for alerts.
+
+
+FINAL NEXT ACTION
+-----------------
+Run k6 tests in the final order.
+If a threshold fails, collect:
+1. Slow API logs
+2. Slow Prisma query logs
+3. Performance checkpoints
+4. BullMQ failed jobs
+5. Prisma pool timeout logs
+6. Redis connection errors
+7. Large response warnings
+
+Then fix the exact failing API one by one.

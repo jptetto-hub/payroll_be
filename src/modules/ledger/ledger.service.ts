@@ -4,6 +4,10 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import {
+  buildCursorPaginationMeta,
+  getCursorPagination,
+} from "../../shared/utils/cursor-pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 
 const ensureEmployeeAccess = (targetRole: Role, currentRole: Role) => {
@@ -102,6 +106,82 @@ export class LedgerService {
     return entries;
   }
 
+  static async createPayrollLedgerTx(
+    tx: any,
+    params: {
+      employeeId: string;
+      payrollId: string;
+      grossSalary: number;
+      standardSalary?: number;
+      otEarnings?: number;
+      advanceDeduction: number;
+      date: Date;
+    },
+  ) {
+    const entries = [];
+
+    let balance = await LedgerRepository.getLastBalanceTx(
+      tx,
+      params.employeeId,
+    );
+    const standardSalary = params.standardSalary ?? params.grossSalary;
+    const otEarnings = params.otEarnings ?? 0;
+
+    balance += standardSalary;
+
+    entries.push({
+      employeeId: params.employeeId,
+      payrollId: params.payrollId,
+      type: LedgerType.SALARY,
+      referenceId: params.payrollId,
+      debit: 0,
+      credit: standardSalary,
+      balance,
+      date: params.date,
+    });
+
+    if (otEarnings > 0) {
+      balance += otEarnings;
+
+      entries.push({
+        employeeId: params.employeeId,
+        payrollId: params.payrollId,
+        type: LedgerType.OVERTIME,
+        referenceId: params.payrollId,
+        debit: 0,
+        credit: otEarnings,
+        balance,
+        date: params.date,
+      });
+    }
+
+    if (params.advanceDeduction > 0) {
+      balance -= params.advanceDeduction;
+
+      entries.push({
+        employeeId: params.employeeId,
+        payrollId: params.payrollId,
+        type: LedgerType.DEDUCTION,
+        referenceId: params.payrollId,
+        debit: params.advanceDeduction,
+        credit: 0,
+        balance,
+        date: params.date,
+      });
+    }
+
+    await LedgerRepository.createManyTx(tx, entries);
+
+    return tx.ledgerEntry.findMany({
+      where: {
+        payrollId: params.payrollId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+  }
+
   static async createAdjustmentLedger(params: {
     employeeId: string;
     payrollId: string;
@@ -147,23 +227,26 @@ export class LedgerService {
   }
 
   static async list(query: any, authUser: { id: string; role: Role }) {
-    const { page, limit, skip, take } = getPagination(query);
+    const { limit, cursor } = getCursorPagination(query);
     const { employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
 
-    const [entries, total] = await LedgerRepository.listAll({
-      skip,
-      take,
+    const entries = await LedgerRepository.listAll({
+      take: limit + 1,
+      ...(cursor && { cursor }),
       employeeWhere,
       payrollId: query.payrollId,
       type: query.type,
+      from: query.from,
+      to: query.to,
     });
+    const { data, pagination } = buildCursorPaginationMeta(entries, limit);
 
     return {
-      data: entries,
-      pagination: buildPaginationMeta(total, page, limit),
+      data,
+      pagination,
     };
   }
 

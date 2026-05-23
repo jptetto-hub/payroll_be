@@ -1,6 +1,8 @@
 import cron from "node-cron";
-import { SchedulerService } from "../modules/scheduler/scheduler.service";
+import { SchedulerRunStatus } from "@prisma/client";
 import { SchedulerRepository } from "../modules/scheduler/scheduler.repository";
+import { payrollSchedulerQueue } from "../jobs/payrollScheduler.queue";
+import { logger } from "../config/logger";
 
 export const startPayrollCron = async () => {
   let setting;
@@ -8,31 +10,67 @@ export const startPayrollCron = async () => {
   try {
     setting = await SchedulerRepository.getSystemSetting();
   } catch (error) {
-    console.error(
-      "Payroll scheduler startup check failed. Server will continue without scheduling payroll cron.",
-      error,
+    logger.error(
+      { error },
+      "Payroll scheduler startup check failed. Worker will continue without scheduling payroll cron.",
     );
     return;
   }
 
   if (setting && !setting.autoPayrollEnabled) {
-    console.log("Payroll scheduler skipped: autoPayrollEnabled is false");
+    logger.info("Payroll scheduler skipped: autoPayrollEnabled is false");
     return;
   }
 
   cron.schedule("0 1 * * *", async () => {
     try {
-      console.log("Payroll scheduler started");
+      logger.info("Payroll cron triggered");
 
-      const result = await SchedulerService.runPayrollScheduler("CRON");
+      const existingManualRun = await SchedulerRepository.findActiveRunByName(
+        "MANUAL_PAYROLL_SCHEDULER",
+      );
+      const existingCronRun = await SchedulerRepository.findActiveRunByName(
+        "CRON_PAYROLL_SCHEDULER",
+      );
 
-      console.log("Payroll scheduler completed", {
-        generated: result.successCount,
-        skipped: result.skippedCount,
-        failed: result.failureCount,
+      if (existingManualRun || existingCronRun) {
+        logger.warn(
+          {
+            existingManualRun,
+            existingCronRun,
+          },
+          "Payroll cron skipped because scheduler is already running",
+        );
+        return;
+      }
+
+      const run = await SchedulerRepository.createRun({
+        name: "CRON_PAYROLL_SCHEDULER",
+        status: SchedulerRunStatus.PENDING,
+        metadata: {
+          triggeredBy: "CRON",
+          triggeredAt: new Date().toISOString(),
+          mode: "BACKGROUND",
+        },
       });
+
+      await payrollSchedulerQueue.add(
+        "manual-payroll-run",
+        {
+          runId: run.id,
+          triggeredBy: undefined,
+          triggeredByType: "CRON",
+        },
+        {
+          attempts: 1,
+          removeOnComplete: false,
+          removeOnFail: false,
+        },
+      );
+
+      logger.info({ runId: run.id }, "Payroll cron job queued");
     } catch (error) {
-      console.error("Payroll scheduler failed", error);
+      logger.error({ error }, "Payroll cron failed to enqueue job");
     }
   });
 };

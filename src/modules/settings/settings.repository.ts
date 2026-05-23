@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 
 const DEFAULT_SETTINGS_ID = "default-settings";
 const db = prisma as any;
@@ -34,13 +34,13 @@ export class SettingsRepository {
   }
 
   static listWorkHourSettings(params: { skip: number; take: number }) {
-    return prisma.$transaction([
-      db.workHourSetting.findMany({
+    return Promise.all([
+      (readPrisma as any).workHourSetting.findMany({
         skip: params.skip,
         take: params.take,
         orderBy: { effectiveFromDate: "desc" },
       }),
-      db.workHourSetting.count(),
+      (readPrisma as any).workHourSetting.count(),
     ]);
   }
 

@@ -47,6 +47,19 @@ export class EmployeeController {
     }
   }
 
+  static async options(req: Request, res: Response, next: NextFunction) {
+    try {
+      const employees = await EmployeeService.employeeOptions(req.query);
+
+      res.json({
+        success: true,
+        data: employees,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getById(
     req: Request<EmployeeParams>,
     res: Response,

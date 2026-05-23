@@ -1,6 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { ReportsService } from "./reports.service";
+import { ReportsRepository } from "./reports.repository";
 import { AuditLogService } from "../audit-logs/audit-log.service";
+import { getCursorPagination } from "../../shared/utils/cursor-pagination.util";
+import { AppError } from "../../shared/utils/app-error";
+import { parseRequiredDateRange } from "../../utils/reportValidation";
+import { serializeBigInt } from "../../utils/serializeBigInt";
+import { withTimeout } from "../../utils/timeout";
 
 const auditReportExport = async (
   req: Request,
@@ -21,7 +27,190 @@ const auditReportExport = async (
   });
 };
 
+const REPORT_MAX_RANGE_DAYS = Number(process.env.REPORT_MAX_RANGE_DAYS || 31);
+const REPORT_TIMEOUT_MS = Number(process.env.REPORT_TIMEOUT_MS || 10000);
+
+const parseSalaryType = (value: unknown) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const salaryType = String(value);
+
+  if (salaryType !== "MONTHLY" && salaryType !== "WEEKLY") {
+    throw new AppError("salaryType must be MONTHLY or WEEKLY", 400);
+  }
+
+  return salaryType;
+};
+
 export class ReportsController {
+  static async payrollSummary(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { from, to } = parseRequiredDateRange(
+        req.query,
+        REPORT_MAX_RANGE_DAYS,
+      );
+      const salaryType = parseSalaryType(req.query.salaryType);
+      const report = await withTimeout(
+        ReportsRepository.getPayrollSummaryReport({
+          from,
+          to,
+          ...(salaryType && { salaryType }),
+          ...(req.query.employeeId && {
+            employeeId: String(req.query.employeeId),
+          }),
+        }),
+        REPORT_TIMEOUT_MS,
+        "Report generation timed out. Please reduce date range.",
+      );
+
+      return res.json({
+        success: true,
+        data: serializeBigInt(report),
+      });
+    } catch (e) {
+      return next(e);
+    }
+  }
+
+  static async employeePayroll(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { from, to } = parseRequiredDateRange(
+        req.query,
+        REPORT_MAX_RANGE_DAYS,
+      );
+      const { limit, cursor } = getCursorPagination(req.query);
+      const rows = await withTimeout(
+        ReportsRepository.getEmployeePayrollReport({
+          from,
+          to,
+          limit,
+          ...(cursor && { cursor }),
+          ...(req.query.employeeId && {
+            employeeId: String(req.query.employeeId),
+          }),
+        }),
+        REPORT_TIMEOUT_MS,
+        "Report generation timed out. Please reduce date range.",
+      );
+      const hasNextPage = rows.length > limit;
+      const data = hasNextPage ? rows.slice(0, limit) : rows;
+      const nextCursor = hasNextPage
+        ? data[data.length - 1]?.employeeId ?? null
+        : null;
+
+      return res.json({
+        success: true,
+        data: serializeBigInt(data),
+        pagination: {
+          limit,
+          nextCursor,
+          hasNextPage,
+        },
+      });
+    } catch (e) {
+      return next(e);
+    }
+  }
+
+  static async ledgerSummary(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { from, to } = parseRequiredDateRange(
+        req.query,
+        REPORT_MAX_RANGE_DAYS,
+      );
+      const report = await withTimeout(
+        ReportsRepository.getLedgerSummaryReport({
+          from,
+          to,
+          ...(req.query.employeeId && {
+            employeeId: String(req.query.employeeId),
+          }),
+        }),
+        REPORT_TIMEOUT_MS,
+        "Report generation timed out. Please reduce date range.",
+      );
+
+      return res.json({
+        success: true,
+        data: serializeBigInt(report),
+      });
+    } catch (e) {
+      return next(e);
+    }
+  }
+
+  static async attendanceSummaryRaw(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const { from, to } = parseRequiredDateRange(
+        req.query,
+        REPORT_MAX_RANGE_DAYS,
+      );
+      const report = await withTimeout(
+        ReportsRepository.getAttendanceSummaryReport({
+          from,
+          to,
+          ...(req.query.employeeId && {
+            employeeId: String(req.query.employeeId),
+          }),
+        }),
+        REPORT_TIMEOUT_MS,
+        "Report generation timed out. Please reduce date range.",
+      );
+
+      return res.json({
+        success: true,
+        data: serializeBigInt(report),
+      });
+    } catch (e) {
+      return next(e);
+    }
+  }
+
+  static async advanceOutstanding(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const salaryType = parseSalaryType(req.query.salaryType);
+      const report = await withTimeout(
+        ReportsRepository.getAdvanceOutstandingReport({
+          ...(salaryType && { salaryType }),
+          ...(req.query.employeeId && {
+            employeeId: String(req.query.employeeId),
+          }),
+        }),
+        REPORT_TIMEOUT_MS,
+        "Report generation timed out. Please reduce filters.",
+      );
+
+      return res.json({
+        success: true,
+        data: serializeBigInt(report),
+      });
+    } catch (e) {
+      return next(e);
+    }
+  }
+
   static async salary(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await ReportsService.salary(req.query, req.user);

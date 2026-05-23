@@ -4,6 +4,7 @@ import { PayrollCarryForwardRepository } from "../payroll-carry-forward/payroll-
 import { getWorkingDatesBetween } from "../../shared/payroll/payrollDate.utils";
 import { getEffectivePayrollPeriod } from "../../shared/payroll/payrollPeriod.utils";
 import { OvertimeService } from "../../services/overtime.service";
+import { PerformanceTimer } from "../../utils/performanceTimer";
 
 const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -172,6 +173,9 @@ export class SalaryCalculationService {
     periodStart: string;
     periodEnd: string;
   }) {
+    const timer = new PerformanceTimer("SalaryCalculationService.preview");
+    timer.checkpoint("start");
+
     const periodStart = parseDateOnly(data.periodStart);
     const periodEnd = parseDateOnly(data.periodEnd);
     const missingDates: string[] = [];
@@ -183,6 +187,7 @@ export class SalaryCalculationService {
     const employee = await SalaryCalculationRepository.findEmployee(
       data.employeeId,
     );
+    timer.checkpoint("employee fetch");
 
     if (!employee) {
       throw new Error("Employee not found");
@@ -218,9 +223,10 @@ export class SalaryCalculationService {
         periodStart,
         periodEnd,
       );
+    timer.checkpoint("active payroll snapshot fetch");
 
     if (activePayrollSnapshot) {
-      return buildPreviewFromPayrollSnapshot(
+      const snapshotPreview = buildPreviewFromPayrollSnapshot(
         activePayrollSnapshot,
         employee,
         periodStart,
@@ -229,6 +235,10 @@ export class SalaryCalculationService {
         effectivePeriodEnd,
         joinedDuringCycle,
       );
+      timer.checkpoint("snapshot preview build");
+      timer.end();
+
+      return snapshotPreview;
     }
 
     const salaryHistories =
@@ -236,6 +246,7 @@ export class SalaryCalculationService {
         data.employeeId,
         effectivePeriodEnd,
       );
+    timer.checkpoint("salary history fetch");
 
     if (salaryHistories.length === 0) {
       throw new Error("No salary history found for this employee");
@@ -262,10 +273,17 @@ export class SalaryCalculationService {
       effectivePeriodStart,
       effectivePeriodEnd,
     );
+    timer.checkpoint("attendance fetch");
 
     const attendanceMap = new Map(
       attendanceRecords.map((item) => [formatDate(item.date), item]),
     );
+
+    const workHourSettings = await OvertimeService.getSettingsForDateRange(
+      effectivePeriodStart,
+      effectivePeriodEnd,
+    );
+    timer.checkpoint("overtime settings fetch");
 
     const segments = [];
 
@@ -313,10 +331,15 @@ export class SalaryCalculationService {
         const dailyOtHours = Number((attendance as any)?.otHours ?? 0);
 
         if (dailyOtHours > 0) {
-          const workHourSetting = await OvertimeService.getSettingForDate(
-            new Date(`${formattedDate}T00:00:00.000Z`),
+          const workDate = new Date(`${formattedDate}T00:00:00.000Z`);
+          const workHourSetting = OvertimeService.resolveSettingFromList(
+            workHourSettings,
+            workDate,
           );
-          const dailyHours = Math.max(workHourSetting.standardMinutes / 60, 1);
+          const dailyHours = Math.max(
+            Number(workHourSetting.standardMinutes) / 60,
+            1,
+          );
           const dailyRate =
             (Number(salary.salaryAmount) / workingDates.length) / dailyHours;
           const dailyOtEarnings = roundMoney(dailyRate * dailyOtHours);
@@ -358,6 +381,7 @@ export class SalaryCalculationService {
         grossSalary: roundMoney(segmentGrossSalary + otEarnings),
       });
     }
+    timer.checkpoint("calculation loop");
 
     const totalWorkingDays = segments.reduce(
       (sum, item) => sum + item.workingDays,
@@ -400,6 +424,7 @@ export class SalaryCalculationService {
         periodStart,
         periodEnd,
       );
+    timer.checkpoint("advance fetch");
 
     const invalidAdvances = advances.filter(
       (item) => item.payCycleType !== employee.salaryType,
@@ -438,6 +463,7 @@ export class SalaryCalculationService {
         data.employeeId,
         periodStart,
       );
+    timer.checkpoint("carry forward fetch");
 
     let remainingGrossForCarryForward = roundMoney(
       grossSalary - advanceDeduction,
@@ -473,7 +499,7 @@ export class SalaryCalculationService {
     const carryForwardDeduction =
       rawFinalSalary < 0 ? roundMoney(Math.abs(rawFinalSalary)) : 0;
 
-    return {
+    const result = {
       employee: {
         id: employee.id,
         employeeCode: employee.employeeCode,
@@ -539,5 +565,9 @@ export class SalaryCalculationService {
         isNegativeSalary: rawFinalSalary < 0,
       },
     };
+    timer.checkpoint("response build");
+    timer.end();
+
+    return result;
   }
 }

@@ -28,6 +28,12 @@ router.get(
   PayslipController.listByEmployee,
 );
 
+router.post(
+  "/:id/retry",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  PayslipController.retryGeneration,
+);
+
 router.get("/:id", PayslipController.getById);
 
 export default router;

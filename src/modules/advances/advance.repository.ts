@@ -1,5 +1,9 @@
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 import { AdvanceSettlementStatus, Prisma, SalaryType } from "@prisma/client";
+import { CacheService } from "../../utils/cache";
+
+const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
+const SETTINGS_CACHE_TTL = 60 * 10;
 
 export class AdvanceRepository {
   static findEmployee(employeeId: string) {
@@ -17,8 +21,22 @@ export class AdvanceRepository {
     });
   }
 
-  static getSystemSetting() {
-    return prisma.systemSetting.findFirst();
+  static async getSystemSetting() {
+    const cached = await CacheService.get<any>(SYSTEM_SETTINGS_CACHE_KEY);
+
+    if (cached) {
+      return cached;
+    }
+
+    const setting = await prisma.systemSetting.findFirst();
+
+    await CacheService.set(
+      SYSTEM_SETTINGS_CACHE_KEY,
+      setting,
+      SETTINGS_CACHE_TTL,
+    );
+
+    return setting;
   }
 
   static create(data: {
@@ -80,12 +98,27 @@ export class AdvanceRepository {
       ...(params.isSettled !== undefined && { isSettled: params.isSettled }),
     };
 
-    return prisma.$transaction([
-      prisma.advancePayment.findMany({
+    return Promise.all([
+      readPrisma.advancePayment.findMany({
         where,
         skip: params.skip,
         take: params.take,
-        include: {
+        select: {
+          id: true,
+          employeeId: true,
+          amount: true,
+          remainingAmount: true,
+          settledAmount: true,
+          carryForwardAmount: true,
+          settlementStatus: true,
+          date: true,
+          payCycleType: true,
+          cycleStartDate: true,
+          cycleEndDate: true,
+          isSettled: true,
+          note: true,
+          lockedByPayrollId: true,
+          createdAt: true,
           employee: {
             select: {
               id: true,
@@ -100,7 +133,7 @@ export class AdvanceRepository {
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.advancePayment.count({ where }),
+      readPrisma.advancePayment.count({ where }),
     ]);
   }
 
@@ -108,7 +141,7 @@ export class AdvanceRepository {
     employeeId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.advancePayment.findMany({
+    return readPrisma.advancePayment.findMany({
       where: { employeeId },
       ...(pagination && {
         skip: pagination.skip,
@@ -119,7 +152,7 @@ export class AdvanceRepository {
   }
 
   static countByEmployee(employeeId: string) {
-    return prisma.advancePayment.count({
+    return readPrisma.advancePayment.count({
       where: { employeeId },
     });
   }

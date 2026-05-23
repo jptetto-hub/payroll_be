@@ -14,6 +14,9 @@ const parseFromDate = (value?: string) =>
 const parseToDate = (value?: string) =>
   value ? new Date(`${value}T23:59:59.999Z`) : undefined;
 
+const MAX_REPORT_RANGE_DAYS = Number(process.env.REPORT_MAX_RANGE_DAYS || 31);
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
 const normalizeReportQuery = (query: any, authUser: any, paginate = true) => {
   const { employeeWhere } = resolveEmployeeScope({
     authUser,
@@ -31,6 +34,10 @@ const normalizeReportQuery = (query: any, authUser: any, paginate = true) => {
   const fromDate = parseFromDate(query.from as string | undefined);
   const toDate = parseToDate(query.to as string | undefined);
 
+  if (!fromDate || !toDate) {
+    throw new AppError("from and to date are required for report APIs", 400);
+  }
+
   if (fromDate && Number.isNaN(fromDate.getTime())) {
     throw new AppError("Invalid from date. Use YYYY-MM-DD", 400);
   }
@@ -41,6 +48,17 @@ const normalizeReportQuery = (query: any, authUser: any, paginate = true) => {
 
   if (fromDate && toDate && fromDate > toDate) {
     throw new AppError("from date cannot be greater than to date", 400);
+  }
+
+  const rangeDays = Math.ceil(
+    (toDate.getTime() - fromDate.getTime()) / MS_PER_DAY,
+  );
+
+  if (rangeDays > MAX_REPORT_RANGE_DAYS) {
+    throw new AppError(
+      `Report date range cannot exceed ${MAX_REPORT_RANGE_DAYS} days`,
+      400,
+    );
   }
 
   return {

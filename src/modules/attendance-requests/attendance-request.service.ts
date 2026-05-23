@@ -12,6 +12,7 @@ import {
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAttendanceApprovalNotLocked } from "../../shared/payroll/payroll-lock.util";
+import { CacheService } from "../../utils/cache";
 
 const normalizeDate = (date: string) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -260,7 +261,11 @@ export class AttendanceRequestService {
       });
     }
 
-    return AttendanceRequestRepository.createMany(records);
+    const result = await AttendanceRequestRepository.createMany(records);
+
+    await CacheService.delByPattern("dashboard-summary:*");
+
+    return result;
   }
 
   static async myRequests(
@@ -362,7 +367,7 @@ export class AttendanceRequestService {
       filters.to = to;
     }
 
-    const overallPending =
+    const overallPendingCount =
       await AttendanceRequestRepository.pendingRequestsAll(employeeWhere);
 
     const [rangeRequests, total] = await Promise.all([
@@ -377,8 +382,8 @@ export class AttendanceRequestService {
 
     return {
       data: {
-        overallPendingCount: overallPending.length,
-        employeePendingCount: query.employeeId ? overallPending.length : 0,
+        overallPendingCount,
+        employeePendingCount: query.employeeId ? overallPendingCount : 0,
         employeeRangePendingCount: total,
         requestedStatusCounts: statusCounts,
         requests: rangeRequests,
@@ -426,11 +431,18 @@ export class AttendanceRequestService {
         throw new Error("rejectionReason is required");
       }
 
-      return AttendanceRequestRepository.rejectMany({
+      const result = await AttendanceRequestRepository.rejectMany({
         requestIds: uniqueIds,
         approvedById,
         rejectionReason: data.rejectionReason,
       });
+
+      await Promise.all([
+        CacheService.delByPattern("dashboard-summary:*"),
+        CacheService.delByPattern("attendance-summary:*"),
+      ]);
+
+      return result;
     }
 
     for (const request of requests) {
@@ -468,10 +480,17 @@ export class AttendanceRequestService {
       }
     }
 
-    return AttendanceRequestRepository.approveMany({
+    const result = await AttendanceRequestRepository.approveMany({
       requestIds: uniqueIds,
       approvedById,
     });
+
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("attendance-summary:*"),
+    ]);
+
+    return result;
   }
 
   static async approveRequest(requestId: string, approvedById: string) {
@@ -527,7 +546,7 @@ export class AttendanceRequestService {
       );
     }
 
-    return AttendanceRequestRepository.approveRequest({
+    const result = await AttendanceRequestRepository.approveRequest({
       requestId,
       approvedById,
       employeeId: request.employeeId,
@@ -544,6 +563,13 @@ export class AttendanceRequestService {
       requestedOtManualOverride: request.requestedOtManualOverride,
       requestedOtOverrideReason: request.requestedOtOverrideReason,
     });
+
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("attendance-summary:*"),
+    ]);
+
+    return result;
   }
 
   static async rejectRequest(
@@ -561,11 +587,18 @@ export class AttendanceRequestService {
       throw new Error("Only pending request can be rejected");
     }
 
-    return AttendanceRequestRepository.rejectRequest({
+    const result = await AttendanceRequestRepository.rejectRequest({
       requestId,
       approvedById,
       rejectionReason,
     });
+
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("attendance-summary:*"),
+    ]);
+
+    return result;
   }
 
   static async deleteOwnRequest(

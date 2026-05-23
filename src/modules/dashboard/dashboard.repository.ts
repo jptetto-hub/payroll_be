@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { readPrisma } from "../../config/prisma";
 import {
   AttendanceStatus,
   PayrollStatus,
@@ -21,18 +21,18 @@ const hasDateRange = (range: DateRange) => Boolean(range.from || range.to);
 
 export class DashboardRepository {
   static employeeSummary(employeeWhere: Prisma.EmployeeWhereInput) {
-    return prisma.$transaction([
-      prisma.employee.count({ where: employeeWhere }),
-      prisma.employee.count({
+    return Promise.all([
+      readPrisma.employee.count({ where: employeeWhere }),
+      readPrisma.employee.count({
         where: { ...employeeWhere, status: "ACTIVE" },
       }),
-      prisma.employee.count({
+      readPrisma.employee.count({
         where: { ...employeeWhere, status: "INACTIVE" },
       }),
-      prisma.employee.count({
+      readPrisma.employee.count({
         where: { ...employeeWhere, salaryType: SalaryType.WEEKLY },
       }),
-      prisma.employee.count({
+      readPrisma.employee.count({
         where: { ...employeeWhere, salaryType: SalaryType.MONTHLY },
       }),
     ]);
@@ -54,13 +54,13 @@ export class DashboardRepository {
       }),
     };
 
-    return prisma.$transaction([
-      prisma.payroll.groupBy({
+    return Promise.all([
+      readPrisma.payroll.groupBy({
         by: ["status"],
         where,
         _count: true,
       }),
-      prisma.payroll.aggregate({
+      readPrisma.payroll.aggregate({
         where,
         _sum: {
           finalSalary: true,
@@ -70,7 +70,7 @@ export class DashboardRepository {
           advanceDeduction: true,
         },
       }),
-      prisma.payrollCarryForward.aggregate({
+      readPrisma.payrollCarryForward.aggregate({
         where: {
           employee: employeeWhere,
           status: {
@@ -81,7 +81,7 @@ export class DashboardRepository {
           remainingAmount: true,
         },
       }),
-      prisma.payroll.findMany({
+      readPrisma.payroll.findMany({
         where,
         select: {
           attendanceBreakdown: true,
@@ -101,17 +101,17 @@ export class DashboardRepository {
       }),
     };
 
-    return prisma.$transaction([
-      prisma.advancePayment.count({
+    return Promise.all([
+      readPrisma.advancePayment.count({
         where: { ...where, settlementStatus: "SETTLED" },
       }),
-      prisma.advancePayment.count({
+      readPrisma.advancePayment.count({
         where: { ...where, settlementStatus: "UNSETTLED" },
       }),
-      prisma.advancePayment.count({
+      readPrisma.advancePayment.count({
         where: { ...where, settlementStatus: "PARTIALLY_SETTLED" },
       }),
-      prisma.advancePayment.aggregate({
+      readPrisma.advancePayment.aggregate({
         where,
         _sum: {
           amount: true,
@@ -125,7 +125,7 @@ export class DashboardRepository {
     employeeWhere: Prisma.EmployeeWhereInput,
     range: DateRange,
   ) {
-    return prisma.attendance.groupBy({
+    return readPrisma.attendance.groupBy({
       by: ["status"],
       where: {
         employee: employeeWhere,
@@ -141,7 +141,7 @@ export class DashboardRepository {
     employeeWhere: Prisma.EmployeeWhereInput,
     range: DateRange,
   ) {
-    return prisma.attendanceRequest.groupBy({
+    return readPrisma.attendanceRequest.groupBy({
       by: ["status"],
       where: {
         employee: employeeWhere,
@@ -190,8 +190,8 @@ export class DashboardRepository {
       }),
     };
 
-    return prisma.$transaction([
-      prisma.payroll.findMany({
+    return Promise.all([
+      readPrisma.payroll.findMany({
         where,
         skip: params.skip,
         take: params.take,
@@ -207,7 +207,7 @@ export class DashboardRepository {
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.payroll.count({ where }),
+      readPrisma.payroll.count({ where }),
     ]);
   }
 
@@ -227,65 +227,65 @@ export class DashboardRepository {
       auditLogs,
       ledger,
       employees,
-    ] = await prisma.$transaction([
-      prisma.payroll.findMany({
+    ] = await Promise.all([
+      readPrisma.payroll.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.attendance.findMany({
+      readPrisma.attendance.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.advancePayment.findMany({
+      readPrisma.advancePayment.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.attendanceRequest.findMany({
+      readPrisma.attendanceRequest.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.salaryHistory.findMany({
+      readPrisma.salaryHistory.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { updatedAt: "desc" },
       }),
-      prisma.auditLog.findMany({
+      readPrisma.auditLog.findMany({
         where: { user: { is: employeeWhere } },
         take,
         include: { user: true },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.ledgerEntry.findMany({
+      readPrisma.ledgerEntry.findMany({
         where: { employee: employeeWhere },
         take,
         include: { employee: true },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.employee.findMany({
+      readPrisma.employee.findMany({
         where: employeeWhere,
         take,
         orderBy: { createdAt: "desc" },
       }),
     ]);
 
-    const counts = await prisma.$transaction([
-      prisma.payroll.count({ where: { employee: employeeWhere } }),
-      prisma.attendance.count({ where: { employee: employeeWhere } }),
-      prisma.advancePayment.count({ where: { employee: employeeWhere } }),
-      prisma.attendanceRequest.count({ where: { employee: employeeWhere } }),
-      prisma.salaryHistory.count({ where: { employee: employeeWhere } }),
-      prisma.auditLog.count({ where: { user: { is: employeeWhere } } }),
-      prisma.ledgerEntry.count({ where: { employee: employeeWhere } }),
-      prisma.employee.count({ where: employeeWhere }),
+    const counts = await Promise.all([
+      readPrisma.payroll.count({ where: { employee: employeeWhere } }),
+      readPrisma.attendance.count({ where: { employee: employeeWhere } }),
+      readPrisma.advancePayment.count({ where: { employee: employeeWhere } }),
+      readPrisma.attendanceRequest.count({ where: { employee: employeeWhere } }),
+      readPrisma.salaryHistory.count({ where: { employee: employeeWhere } }),
+      readPrisma.auditLog.count({ where: { user: { is: employeeWhere } } }),
+      readPrisma.ledgerEntry.count({ where: { employee: employeeWhere } }),
+      readPrisma.employee.count({ where: employeeWhere }),
     ]);
 
     return {
@@ -316,8 +316,8 @@ export class DashboardRepository {
       }),
     };
 
-    return prisma.$transaction([
-      prisma.payroll.findMany({
+    return Promise.all([
+      readPrisma.payroll.findMany({
         where: payrollWhere,
         select: {
           periodStart: true,
@@ -327,7 +327,7 @@ export class DashboardRepository {
           advanceDeduction: true,
         },
       }),
-      prisma.attendance.findMany({
+      readPrisma.attendance.findMany({
         where: {
           employee: employeeWhere,
           ...(hasDateRange(range) && {
@@ -339,7 +339,7 @@ export class DashboardRepository {
           status: true,
         },
       }),
-      prisma.advancePayment.findMany({
+      readPrisma.advancePayment.findMany({
         where: {
           employee: employeeWhere,
           ...(hasDateRange(range) && {

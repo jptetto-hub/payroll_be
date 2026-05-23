@@ -4,8 +4,13 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import {
+  buildCursorPaginationMeta,
+  getCursorPagination,
+} from "../../shared/utils/cursor-pagination.util";
 import { getCurrentAuditMeta } from "../../shared/audit/audit-context";
 import { normalizeAuditIpAddress } from "../../shared/audit/audit-ip.util";
+import { sanitizeAuditData } from "../../shared/audit/sanitize-audit-data.util";
 
 export class AuditLogService {
   static async create(data: {
@@ -78,11 +83,11 @@ export class AuditLogService {
     }
 
     if (data.oldData !== undefined) {
-      payload.oldData = data.oldData;
+      payload.oldData = sanitizeAuditData(data.oldData);
     }
 
     if (data.newData !== undefined) {
-      payload.newData = data.newData;
+      payload.newData = sanitizeAuditData(data.newData);
     }
 
     if (data.description !== undefined) {
@@ -120,11 +125,10 @@ export class AuditLogService {
   }
 
   static async list(query: any) {
-    const { page, limit, skip, take } = getPagination(query);
-
-    const [logs, total] = await AuditLogRepository.list({
-      skip,
-      take,
+    const { limit, cursor } = getCursorPagination(query);
+    const logs = await AuditLogRepository.list({
+      take: limit + 1,
+      ...(cursor && { cursor }),
       userId: query.userId,
       employeeId: query.employeeId,
       module: query.module,
@@ -134,10 +138,40 @@ export class AuditLogService {
       from: query.from,
       to: query.to,
     });
+    const { data, pagination } = buildCursorPaginationMeta(logs, limit);
 
     return {
-      data: logs,
-      pagination: buildPaginationMeta(total, page, limit),
+      data,
+      pagination,
+    };
+  }
+
+  static async listArchive(query: any) {
+    const { limit, cursor } = getCursorPagination(query);
+    const logs = await AuditLogRepository.listArchive({
+      take: limit + 1,
+      ...(cursor && { cursor }),
+      userId: query.userId,
+      employeeId: query.employeeId,
+      module: query.module,
+      action: query.action,
+      status: query.status,
+      search: query.search,
+      from: query.from,
+      to: query.to,
+    });
+    const normalizedLogs = logs.map((log: any) => ({
+      ...log,
+      createdAt: log.originalCreatedAt,
+    }));
+    const { data, pagination } = buildCursorPaginationMeta(
+      normalizedLogs,
+      limit,
+    );
+
+    return {
+      data,
+      pagination,
     };
   }
 

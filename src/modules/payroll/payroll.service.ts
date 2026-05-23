@@ -3,6 +3,7 @@ import {
   AdvanceSettlementStatus,
   CarryForwardStatus,
   PayrollStatus,
+  Prisma,
   Role,
   SalaryType,
   WeekStartsOn,
@@ -10,6 +11,7 @@ import {
 import { PayrollRepository } from "./payroll.repository";
 import { SalaryCalculationService } from "../salary-calculation/salary-calculation.service";
 import { PayslipService } from "../payslips/payslip.service";
+import { payslipQueue } from "../../jobs/payslip.queue";
 import { LedgerService } from "../ledger/ledger.service";
 import { AuditLogService } from "../audit-logs/audit-log.service";
 import { prisma } from "../../config/prisma";
@@ -17,9 +19,16 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import {
+  buildCursorPaginationMeta,
+  getCursorPagination,
+} from "../../shared/utils/cursor-pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { validateWeeklyPayrollCycle } from "../../shared/payroll/payrollCycle.utils";
 import { AppError } from "../../shared/utils/app-error";
+import { PerformanceTimer } from "../../utils/performanceTimer";
+import { buildActivePayrollKey } from "../../utils/payrollKey";
+import { CacheService } from "../../utils/cache";
 
 const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -177,11 +186,16 @@ export class PayrollService {
       employeeId: string;
       periodStart: string;
       periodEnd: string;
+      createPayslip?: boolean;
     },
     currentUserRole: Role,
     auditContext?: AuditContext,
   ) {
+    const timer = new PerformanceTimer("PayrollService.generate");
+    timer.checkpoint("start");
+
     const employee = await PayrollRepository.findEmployee(data.employeeId);
+    timer.checkpoint("employee fetch");
 
     if (!employee) {
       throw new Error("Employee not found");
@@ -202,14 +216,30 @@ export class PayrollService {
       joiningDate: employee.joiningDate,
       action: "Payroll period start",
     });
+    const activePayrollKey = buildActivePayrollKey({
+      employeeId: employee.id,
+      periodStart,
+      periodEnd,
+    });
 
-    const duplicate = await PayrollRepository.findActivePayroll(
+    const existingActivePayroll = await PayrollRepository.findByActivePayrollKey(
+      activePayrollKey,
+    );
+    timer.checkpoint("duplicate payroll check");
+
+    if (existingActivePayroll) {
+      throw new Error(
+        "Active payroll already exists for this employee and period",
+      );
+    }
+
+    const existingPeriodPayroll = await PayrollRepository.findActivePayroll(
       employee.id,
       periodStart,
       periodEnd,
     );
 
-    if (duplicate) {
+    if (existingPeriodPayroll) {
       throw new Error(
         "Active payroll already exists for this employee and period",
       );
@@ -220,6 +250,7 @@ export class PayrollService {
       periodStart: data.periodStart,
       periodEnd: data.periodEnd,
     });
+    timer.checkpoint("salary calculation preview");
 
     const latestVersion = await PayrollRepository.getLatestVersion(
       employee.id,
@@ -228,130 +259,190 @@ export class PayrollService {
     );
 
     const version = latestVersion ? latestVersion.version + 1 : 1;
+    timer.checkpoint("latest payroll version fetch");
+
     const advanceBreakdown = buildAdvanceBreakdown(
       preview.advanceSummary,
       preview.carryForwardSummary,
     );
 
-    const payrollResult = await prisma.$transaction(async (tx) => {
-      const payroll = await tx.payroll.create({
-        data: {
-          employeeId: employee.id,
-          periodStart,
-          periodEnd,
-          salaryType: employee.salaryType,
-          grossSalary: preview.result.grossSalary,
-          standardSalary: preview.result.standardSalary,
-          otTotalHours: preview.result.otTotalHours,
-          otHourlyRate: preview.result.otHourlyRate,
-          otEarnings: preview.result.otEarnings,
-          advanceDeduction: preview.result.advanceDeduction,
-          carryForwardApplied: preview.result.carryForwardApplied,
-          totalDeduction: preview.result.totalDeduction,
-          rawFinalSalary: preview.result.rawFinalSalary,
-          finalSalary: preview.result.finalSalary,
-          carryForwardDeduction: preview.result.carryForwardDeduction,
+    timer.checkpoint("before payroll transaction");
+    let payrollResult;
 
-          totalDays: preview.attendanceSummary.workingDays,
-          workingDays: preview.attendanceSummary.workingDays,
-          presentDays: preview.attendanceSummary.presentDays,
-          absentDays: preview.attendanceSummary.absentDays,
-          halfDays: preview.attendanceSummary.halfDays,
+    try {
+      payrollResult = await prisma.$transaction(async (tx) => {
+        const payroll = await tx.payroll.create({
+          data: {
+            employeeId: employee.id,
+            periodStart,
+            periodEnd,
+            salaryType: employee.salaryType,
+            activePayrollKey,
+            grossSalary: preview.result.grossSalary,
+            standardSalary: preview.result.standardSalary,
+            otTotalHours: preview.result.otTotalHours,
+            otHourlyRate: preview.result.otHourlyRate,
+            otEarnings: preview.result.otEarnings,
+            advanceDeduction: preview.result.advanceDeduction,
+            carryForwardApplied: preview.result.carryForwardApplied,
+            totalDeduction: preview.result.totalDeduction,
+            rawFinalSalary: preview.result.rawFinalSalary,
+            finalSalary: preview.result.finalSalary,
+            carryForwardDeduction: preview.result.carryForwardDeduction,
 
-          version,
-          status: PayrollStatus.GENERATED,
+            totalDays: preview.attendanceSummary.workingDays,
+            workingDays: preview.attendanceSummary.workingDays,
+            presentDays: preview.attendanceSummary.presentDays,
+            absentDays: preview.attendanceSummary.absentDays,
+            halfDays: preview.attendanceSummary.halfDays,
 
-          isRecalculated: version > 1,
-          lockedAt: new Date(),
+            version,
+            status: PayrollStatus.GENERATED,
 
-          salaryBreakdown: preview.salaryBreakdown,
-          attendanceBreakdown: preview.attendanceSummary,
-          advanceBreakdown,
-          overtimeBreakdown: preview.overtimeSummary,
-        },
-        include: {
-          employee: {
-            select: {
-              id: true,
-              employeeCode: true,
-              name: true,
-              salaryType: true,
+            isRecalculated: version > 1,
+            lockedAt: new Date(),
+
+            salaryBreakdown: preview.salaryBreakdown,
+            attendanceBreakdown: preview.attendanceSummary,
+            advanceBreakdown,
+            overtimeBreakdown: preview.overtimeSummary,
+          },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                employeeCode: true,
+                name: true,
+                salaryType: true,
+              },
             },
           },
-        },
-      });
+        });
 
-      await tx.attendance.updateMany({
-        where: {
-          employeeId: employee.id,
-          date: {
-            gte: payroll.periodStart,
-            lte: payroll.periodEnd,
+        await tx.attendance.updateMany({
+          where: {
+            employeeId: employee.id,
+            date: {
+              gte: payroll.periodStart,
+              lte: payroll.periodEnd,
+            },
           },
-        },
-        data: {
-          lockedByPayrollId: payroll.id,
-        },
-      });
-
-      const settledAdvances = await settleAdvancesForPayroll(
-        tx,
-        preview,
-        payroll.id,
-      );
-
-      for (const item of preview.carryForwardSummary.appliedCarryForwards) {
-        const newRemaining = roundMoney(
-          item.remainingAmount - item.appliedAmount,
-        );
-
-        await tx.payrollCarryForward.update({
-          where: { id: item.id },
           data: {
-            remainingAmount: newRemaining,
-            status:
-              newRemaining <= 0
-                ? CarryForwardStatus.DEDUCTED
-                : CarryForwardStatus.PARTIALLY_DEDUCTED,
+            lockedByPayrollId: payroll.id,
           },
         });
+
+        await tx.salaryHistory.updateMany({
+          where: {
+            employeeId: employee.id,
+            effectiveFrom: {
+              lte: payroll.periodEnd,
+            },
+            lockedFromPayrollId: null,
+          },
+          data: {
+            lockedFromPayrollId: payroll.id,
+          },
+        });
+
+        const settledAdvances = await settleAdvancesForPayroll(
+          tx,
+          preview,
+          payroll.id,
+        );
+
+        for (const item of preview.carryForwardSummary.appliedCarryForwards) {
+          const newRemaining = roundMoney(
+            item.remainingAmount - item.appliedAmount,
+          );
+
+          await tx.payrollCarryForward.update({
+            where: { id: item.id },
+            data: {
+              remainingAmount: newRemaining,
+              status:
+                newRemaining <= 0
+                  ? CarryForwardStatus.DEDUCTED
+                  : CarryForwardStatus.PARTIALLY_DEDUCTED,
+            },
+          });
+        }
+
+        const carryForward =
+          preview.result.carryForwardDeduction > 0
+            ? await tx.payrollCarryForward.create({
+                data: {
+                  employeeId: employee.id,
+                  sourcePayrollId: payroll.id,
+                  amount: preview.result.carryForwardDeduction,
+                  remainingAmount: preview.result.carryForwardDeduction,
+                  cycleStartDate: payroll.periodStart,
+                  cycleEndDate: payroll.periodEnd,
+                  status: CarryForwardStatus.PENDING,
+                },
+              })
+            : null;
+
+        const ledgerEntries = await LedgerService.createPayrollLedgerTx(tx, {
+          employeeId: payroll.employeeId,
+          payrollId: payroll.id,
+          grossSalary: Number(payroll.grossSalary),
+          standardSalary: Number((payroll as any).standardSalary),
+          otEarnings: Number((payroll as any).otEarnings),
+          advanceDeduction: Number(payroll.advanceDeduction),
+          date: payroll.periodEnd,
+        });
+
+        return {
+          payroll,
+          carryForward,
+          settledAdvances,
+          ledgerEntries,
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new Error(
+          "Payroll already generated for this employee and period",
+        );
       }
 
-      const carryForward =
-        preview.result.carryForwardDeduction > 0
-          ? await tx.payrollCarryForward.create({
-              data: {
-                employeeId: employee.id,
-                sourcePayrollId: payroll.id,
-                amount: preview.result.carryForwardDeduction,
-                remainingAmount: preview.result.carryForwardDeduction,
-                cycleStartDate: payroll.periodStart,
-                cycleEndDate: payroll.periodEnd,
-                status: CarryForwardStatus.PENDING,
-              },
-            })
-          : null;
+      throw error;
+    }
+    timer.checkpoint("after payroll transaction");
 
-      return {
-        payroll,
-        carryForward,
-        settledAdvances,
-      };
-    });
+    const { payroll, carryForward, settledAdvances, ledgerEntries } =
+      payrollResult;
 
-    const { payroll, carryForward, settledAdvances } = payrollResult;
+    let payslip = null;
 
-    const payslip = await PayslipService.createFromPayroll(payroll.id);
+    const shouldGeneratePayslipSync =
+      data.createPayslip === true &&
+      process.env.PAYSLIP_SYNC_GENERATION === "true";
 
-    const ledgerEntries = await LedgerService.createPayrollLedger({
-      employeeId: payroll.employeeId,
-      payrollId: payroll.id,
-      grossSalary: Number(payroll.grossSalary),
-      standardSalary: Number((payroll as any).standardSalary),
-      otEarnings: Number((payroll as any).otEarnings),
-      advanceDeduction: Number(payroll.advanceDeduction),
-      date: payroll.periodEnd,
-    });
+    if (!shouldGeneratePayslipSync) {
+      await payslipQueue.add(
+        "generate-payslip",
+        {
+          payrollId: payroll.id,
+        },
+        {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 5000,
+          },
+          removeOnComplete: false,
+          removeOnFail: false,
+        },
+      );
+    } else {
+      payslip = await PayslipService.createFromPayroll(payroll.id);
+    }
+    timer.checkpoint("payslip handling");
 
     if (auditContext?.userId) {
       await AuditLogService.create({
@@ -396,6 +487,9 @@ export class PayrollService {
         });
       }
     }
+    timer.checkpoint("audit logging");
+    await CacheService.delByPattern("dashboard-summary:*");
+    timer.end();
 
     return {
       payroll,
@@ -407,23 +501,20 @@ export class PayrollService {
   }
 
   static async list(query: any, authUser: { id: string; role: Role }) {
-    const { page, limit, skip, take } = getPagination(query);
+    const { limit, cursor } = getCursorPagination(query);
     const { employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
 
-    const [payrolls, total] = await PayrollRepository.list({
-      skip,
-      take,
+    const payrolls = await PayrollRepository.list({
+      take: limit + 1,
+      ...(cursor && { cursor }),
       employeeWhere,
       status: query.status,
     });
 
-    return {
-      data: payrolls,
-      pagination: buildPaginationMeta(total, page, limit),
-    };
+    return buildCursorPaginationMeta(payrolls, limit);
   }
 
   static async getById(id: string) {
@@ -546,6 +637,7 @@ export class PayrollService {
         where: { id: payroll.id },
         data: {
           status: PayrollStatus.CANCELLED,
+          activePayrollKey: null,
           cancelledAt: new Date(),
           ...(currentUserId && { cancelledById: currentUserId }),
           cancelReason: reason,
@@ -631,6 +723,8 @@ export class PayrollService {
       }
     }
 
+    await CacheService.delByPattern("dashboard-summary:*");
+
     return {
       payroll: result.cancelledPayroll,
       unlocked: {
@@ -688,56 +782,77 @@ export class PayrollService {
     );
 
     const newVersion = latestVersion ? latestVersion.version + 1 : 1;
+    const activePayrollKey = buildActivePayrollKey({
+      employeeId: oldPayroll.employeeId,
+      periodStart: oldPayroll.periodStart,
+      periodEnd: oldPayroll.periodEnd,
+    });
     const advanceBreakdown = buildAdvanceBreakdown(
       preview.advanceSummary,
       preview.carryForwardSummary,
     );
 
-    const recalculation = await PayrollRepository.recalculatePayroll({
-      oldPayrollId: oldPayroll.id,
-      newPayrollData: {
-        employeeId: oldPayroll.employeeId,
-        periodStart: oldPayroll.periodStart,
-        periodEnd: oldPayroll.periodEnd,
-        salaryType: oldPayroll.salaryType,
+    let recalculation;
 
-        grossSalary: preview.result.grossSalary,
-        standardSalary: preview.result.standardSalary,
-        otTotalHours: preview.result.otTotalHours,
-        otHourlyRate: preview.result.otHourlyRate,
-        otEarnings: preview.result.otEarnings,
-        advanceDeduction: preview.result.advanceDeduction,
-        carryForwardApplied: preview.result.carryForwardApplied,
-        totalDeduction: preview.result.totalDeduction,
-        rawFinalSalary: preview.result.rawFinalSalary,
-        finalSalary: preview.result.finalSalary,
-        carryForwardDeduction: preview.result.carryForwardDeduction,
+    try {
+      recalculation = await PayrollRepository.recalculatePayroll({
+        oldPayrollId: oldPayroll.id,
+        newPayrollData: {
+          employeeId: oldPayroll.employeeId,
+          periodStart: oldPayroll.periodStart,
+          periodEnd: oldPayroll.periodEnd,
+          salaryType: oldPayroll.salaryType,
+          activePayrollKey,
 
-        totalDays: preview.attendanceSummary.workingDays,
-        workingDays: preview.attendanceSummary.workingDays,
-        presentDays: preview.attendanceSummary.presentDays,
-        absentDays:
-          preview.attendanceSummary.absentDays +
-          preview.attendanceSummary.missingDays,
-        halfDays: preview.attendanceSummary.halfDays,
+          grossSalary: preview.result.grossSalary,
+          standardSalary: preview.result.standardSalary,
+          otTotalHours: preview.result.otTotalHours,
+          otHourlyRate: preview.result.otHourlyRate,
+          otEarnings: preview.result.otEarnings,
+          advanceDeduction: preview.result.advanceDeduction,
+          carryForwardApplied: preview.result.carryForwardApplied,
+          totalDeduction: preview.result.totalDeduction,
+          rawFinalSalary: preview.result.rawFinalSalary,
+          finalSalary: preview.result.finalSalary,
+          carryForwardDeduction: preview.result.carryForwardDeduction,
 
-        version: newVersion,
-        status: PayrollStatus.GENERATED,
-        lockedAt: new Date(),
+          totalDays: preview.attendanceSummary.workingDays,
+          workingDays: preview.attendanceSummary.workingDays,
+          presentDays: preview.attendanceSummary.presentDays,
+          absentDays:
+            preview.attendanceSummary.absentDays +
+            preview.attendanceSummary.missingDays,
+          halfDays: preview.attendanceSummary.halfDays,
 
-        isRecalculated: true,
-        recalculatedBy: currentUserId,
-        recalculatedAt: new Date(),
-        recalculationReason: reason,
+          version: newVersion,
+          status: PayrollStatus.GENERATED,
+          lockedAt: new Date(),
 
-        replacedPayrollId: oldPayroll.id,
+          isRecalculated: true,
+          recalculatedBy: currentUserId,
+          recalculatedAt: new Date(),
+          recalculationReason: reason,
 
-        salaryBreakdown: preview.salaryBreakdown,
-        attendanceBreakdown: preview.attendanceSummary,
-        advanceBreakdown,
-        overtimeBreakdown: preview.overtimeSummary,
-      },
-    });
+          replacedPayrollId: oldPayroll.id,
+
+          salaryBreakdown: preview.salaryBreakdown,
+          attendanceBreakdown: preview.attendanceSummary,
+          advanceBreakdown,
+          overtimeBreakdown: preview.overtimeSummary,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new Error(
+          "Payroll already generated for this employee and period",
+        );
+      }
+
+      throw error;
+    }
 
     await prisma.attendance.updateMany({
       where: {
@@ -774,6 +889,8 @@ export class PayrollService {
       newFinalSalary: Number(recalculation.newPayroll.finalSalary),
       date: recalculation.newPayroll.periodEnd,
     });
+
+    await CacheService.delByPattern("dashboard-summary:*");
 
     return {
       ...recalculation,

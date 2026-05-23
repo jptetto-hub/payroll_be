@@ -1,5 +1,5 @@
-import { prisma } from "../../config/prisma";
-import { PayrollStatus, Prisma } from "@prisma/client";
+import { prisma, readPrisma } from "../../config/prisma";
+import { PayrollStatus, PayslipStatus, Prisma } from "@prisma/client";
 
 export class PayslipRepository {
   static findPayroll(payrollId: string) {
@@ -21,7 +21,7 @@ export class PayslipRepository {
   }
 
   static findByPayroll(payrollId: string) {
-    return prisma.payslip.findFirst({
+    return readPrisma.payslip.findUnique({
       where: { payrollId },
       include: {
         employee: {
@@ -39,7 +39,7 @@ export class PayslipRepository {
   }
 
   static findEmployee(employeeId: string) {
-    return prisma.employee.findUnique({
+    return readPrisma.employee.findUnique({
       where: { id: employeeId },
       select: {
         id: true,
@@ -50,8 +50,30 @@ export class PayslipRepository {
   }
 
   static createFromPayroll(payroll: any) {
-    return prisma.payslip.create({
-      data: {
+    return prisma.payslip.upsert({
+      where: {
+        payrollId: payroll.id,
+      },
+      update: {
+        totalDays: payroll.totalDays,
+        presentDays: payroll.presentDays,
+        absentDays: payroll.absentDays,
+        halfDays: payroll.halfDays,
+        salaryBreakdown: payroll.salaryBreakdown,
+        standardSalary: payroll.standardSalary ?? payroll.grossSalary,
+        otTotalHours: payroll.otTotalHours ?? 0,
+        otHourlyRate: payroll.otHourlyRate ?? 0,
+        otEarnings: payroll.otEarnings ?? 0,
+        overtimeBreakdown: payroll.overtimeBreakdown ?? null,
+        advanceDeduction: payroll.advanceDeduction,
+        finalSalary: payroll.finalSalary,
+        payrollVersion: payroll.version,
+        isRecalculated: payroll.isRecalculated,
+        status: PayslipStatus.READY,
+        pdfGeneratedAt: new Date(),
+        errorMessage: null,
+      },
+      create: {
         employeeId: payroll.employeeId,
         payrollId: payroll.id,
         periodStart: payroll.periodStart,
@@ -70,6 +92,9 @@ export class PayslipRepository {
         finalSalary: payroll.finalSalary,
         payrollVersion: payroll.version,
         isRecalculated: payroll.isRecalculated,
+        status: PayslipStatus.READY,
+        pdfGeneratedAt: new Date(),
+        errorMessage: null,
       },
       include: {
         employee: {
@@ -81,6 +106,27 @@ export class PayslipRepository {
             salaryType: true,
           },
         },
+      },
+    });
+  }
+
+  static findRetryTarget(id: string) {
+    return prisma.payslip.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        payrollId: true,
+        status: true,
+      },
+    });
+  }
+
+  static markRetryQueued(id: string) {
+    return prisma.payslip.update({
+      where: { id },
+      data: {
+        status: PayslipStatus.PENDING,
+        errorMessage: null,
       },
     });
   }
@@ -101,12 +147,32 @@ export class PayslipRepository {
       },
     };
 
-    return prisma.$transaction([
-      prisma.payslip.findMany({
+    return Promise.all([
+      readPrisma.payslip.findMany({
         where,
         skip: params.skip,
         take: params.take,
-        include: {
+        select: {
+          id: true,
+          employeeId: true,
+          payrollId: true,
+          periodStart: true,
+          periodEnd: true,
+          totalDays: true,
+          presentDays: true,
+          absentDays: true,
+          halfDays: true,
+          standardSalary: true,
+          otTotalHours: true,
+          otEarnings: true,
+          advanceDeduction: true,
+          finalSalary: true,
+          payrollVersion: true,
+          isRecalculated: true,
+          status: true,
+          pdfUrl: true,
+          pdfGeneratedAt: true,
+          createdAt: true,
           employee: {
             select: {
               id: true,
@@ -118,16 +184,25 @@ export class PayslipRepository {
               salaryType: true,
             },
           },
-          payroll: true,
+          payroll: {
+            select: {
+              id: true,
+              status: true,
+              salaryType: true,
+              periodStart: true,
+              periodEnd: true,
+              version: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.payslip.count({ where }),
+      readPrisma.payslip.count({ where }),
     ]);
   }
 
   static findById(id: string) {
-    return prisma.payslip.findUnique({
+    return readPrisma.payslip.findUnique({
       where: { id },
       include: {
         employee: {
@@ -151,7 +226,7 @@ export class PayslipRepository {
     employeeId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.payslip.findMany({
+    return readPrisma.payslip.findMany({
       where: {
         employeeId,
         payroll: {
@@ -162,8 +237,37 @@ export class PayslipRepository {
           },
         },
       },
-      include: {
-        payroll: true,
+      select: {
+        id: true,
+        employeeId: true,
+        payrollId: true,
+        periodStart: true,
+        periodEnd: true,
+        totalDays: true,
+        presentDays: true,
+        absentDays: true,
+        halfDays: true,
+        standardSalary: true,
+        otTotalHours: true,
+        otEarnings: true,
+        advanceDeduction: true,
+        finalSalary: true,
+        payrollVersion: true,
+        isRecalculated: true,
+        status: true,
+        pdfUrl: true,
+        pdfGeneratedAt: true,
+        createdAt: true,
+        payroll: {
+          select: {
+            id: true,
+            status: true,
+            salaryType: true,
+            periodStart: true,
+            periodEnd: true,
+            version: true,
+          },
+        },
       },
       ...(pagination && {
         skip: pagination.skip,
@@ -174,7 +278,7 @@ export class PayslipRepository {
   }
 
   static countByEmployee(employeeId: string) {
-    return prisma.payslip.count({
+    return readPrisma.payslip.count({
       where: {
         employeeId,
         payroll: {

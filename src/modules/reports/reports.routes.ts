@@ -9,6 +9,36 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get(
+  "/payroll-summary",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  ReportsController.payrollSummary,
+);
+
+router.get(
+  "/employee-payroll",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  ReportsController.employeePayroll,
+);
+
+router.get(
+  "/ledger-summary",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  ReportsController.ledgerSummary,
+);
+
+router.get(
+  "/attendance-summary",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  ReportsController.attendanceSummaryRaw,
+);
+
+router.get(
+  "/advance-outstanding",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  ReportsController.advanceOutstanding,
+);
+
+router.get(
   "/salary",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
   ReportsController.salary,

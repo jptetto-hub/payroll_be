@@ -1,10 +1,12 @@
 import { PayrollStatus, Role } from "@prisma/client";
 import { PayslipRepository } from "./payslip.repository";
+import { payslipQueue } from "../../jobs/payslip.queue";
 import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
+import { PerformanceTimer } from "../../utils/performanceTimer";
 
 const ensureEmployeeAccess = (targetRole: Role, currentRole: Role) => {
   if (currentRole === Role.ADMIN && targetRole !== Role.USER) {
@@ -14,7 +16,11 @@ const ensureEmployeeAccess = (targetRole: Role, currentRole: Role) => {
 
 export class PayslipService {
   static async createFromPayroll(payrollId: string) {
+    const timer = new PerformanceTimer("PayslipService.createFromPayroll");
+    timer.checkpoint("start");
+
     const payroll = await PayslipRepository.findPayroll(payrollId);
+    timer.checkpoint("payroll fetch");
 
     if (!payroll) {
       throw new Error("Payroll not found");
@@ -28,13 +34,39 @@ export class PayslipService {
       throw new Error("Cannot create payslip for superseded payroll");
     }
 
-    const existing = await PayslipRepository.findByPayroll(payrollId);
+    const payslip = await PayslipRepository.createFromPayroll(payroll);
+    timer.checkpoint("payslip upsert");
+    timer.end();
 
-    if (existing) {
-      throw new Error("Payslip already exists for this payroll");
+    return payslip;
+  }
+
+  static async retryGeneration(id: string) {
+    const payslip = await PayslipRepository.findRetryTarget(id);
+
+    if (!payslip) {
+      throw new Error("Payslip not found");
     }
 
-    return PayslipRepository.createFromPayroll(payroll);
+    await PayslipRepository.markRetryQueued(payslip.id);
+
+    await payslipQueue.add(
+      "generate-payslip",
+      {
+        payrollId: payslip.payrollId,
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: "exponential",
+          delay: 5000,
+        },
+        removeOnComplete: false,
+        removeOnFail: false,
+      },
+    );
+
+    return payslip;
   }
 
   static async list(query: any, authUser: { id: string; role: Role }) {

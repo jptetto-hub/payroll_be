@@ -92,6 +92,31 @@ enum CarryForwardStatus {
   CANCELLED
 }
 
+enum SchedulerRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL_SUCCESS
+}
+
+enum SchedulerRunItemStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+enum PayslipStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum DashboardSummaryType {
+  GLOBAL
+  EMPLOYEE
+}
+
 model Employee {
   id           String         @id @default(uuid())
   employeeCode String         @unique
@@ -117,9 +142,10 @@ model Employee {
   payrolls           Payroll[]
   payslips           Payslip[]
   ledgerEntries      LedgerEntry[]
-  auditLogs          AuditLog[]             @relation("AuditUserLogs")
-  employeeAuditLogs  AuditLog[]             @relation("AuditEmployeeLogs")
+  auditLogs          AuditLog[]            @relation("AuditUserLogs")
+  employeeAuditLogs  AuditLog[]            @relation("AuditEmployeeLogs")
   carryForwards      PayrollCarryForward[]
+  dashboardSummaries DashboardSummary[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,6 +153,56 @@ model Employee {
   @@index([role])
   @@index([status])
   @@index([salaryType])
+  @@index([status, role])
+  @@index([status, salaryType])
+  @@index([name])
+  @@index([createdAt])
+}
+
+model DashboardSummary {
+  id         String               @id @default(uuid())
+  summaryKey String               @unique
+  type       DashboardSummaryType
+  employeeId String?
+
+  periodStart DateTime?
+  periodEnd   DateTime?
+
+  totalEmployees    Int @default(0)
+  activeEmployees   Int @default(0)
+  inactiveEmployees Int @default(0)
+
+  pendingAttendanceRequests  Int @default(0)
+  approvedAttendanceRequests Int @default(0)
+  rejectedAttendanceRequests Int @default(0)
+
+  generatedPayrolls Int @default(0)
+  paidPayrolls      Int @default(0)
+  cancelledPayrolls Int @default(0)
+
+  grossSalaryTotal      Decimal @default(0) @db.Decimal(14, 2)
+  advanceDeductionTotal Decimal @default(0) @db.Decimal(14, 2)
+  finalSalaryTotal      Decimal @default(0) @db.Decimal(14, 2)
+
+  outstandingAdvanceTotal Decimal @default(0) @db.Decimal(14, 2)
+
+  ledgerSalaryTotal     Decimal @default(0) @db.Decimal(14, 2)
+  ledgerAdvanceTotal    Decimal @default(0) @db.Decimal(14, 2)
+  ledgerDeductionTotal  Decimal @default(0) @db.Decimal(14, 2)
+  ledgerAdjustmentTotal Decimal @default(0) @db.Decimal(14, 2)
+
+  metadata Json?
+
+  calculatedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([type])
+  @@index([employeeId])
+  @@index([periodStart, periodEnd])
+  @@index([calculatedAt])
 }
 
 model SalaryHistory {
@@ -143,7 +219,9 @@ model SalaryHistory {
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom(sort: Desc)], map: "SalaryHistory_employeeId_effectiveFrom_desc_idx")
   @@index([lockedFromPayrollId])
+  @@index([createdAt])
 }
 
 model Attendance {
@@ -158,8 +236,8 @@ model Attendance {
   checkOutTime     DateTime?
   otStartTime      DateTime?
   otEndTime        DateTime?
-  otHours          Decimal  @default(0) @db.Decimal(7, 2)
-  otManualOverride Boolean  @default(false)
+  otHours          Decimal   @default(0) @db.Decimal(7, 2)
+  otManualOverride Boolean   @default(false)
   otOverrideReason String?
   otBreakdown      Json?
 
@@ -171,7 +249,10 @@ model Attendance {
   @@unique([employeeId, date])
   @@index([date])
   @@index([employeeId, date])
+  @@index([employeeId, date, status])
+  @@index([date, status])
   @@index([lockedByPayrollId])
+  @@index([createdAt])
 }
 
 model AttendanceRequest {
@@ -187,8 +268,8 @@ model AttendanceRequest {
   requestedCheckOutTime     DateTime?
   requestedOtStartTime      DateTime?
   requestedOtEndTime        DateTime?
-  requestedOtHours          Decimal? @db.Decimal(7, 2)
-  requestedOtManualOverride Boolean  @default(false)
+  requestedOtHours          Decimal?  @db.Decimal(7, 2)
+  requestedOtManualOverride Boolean   @default(false)
   requestedOtOverrideReason String?
 
   status RequestStatus @default(PENDING)
@@ -206,7 +287,12 @@ model AttendanceRequest {
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, attendanceDate])
+  @@index([employeeId, status, attendanceDate])
   @@index([status])
+  @@index([status, attendanceDate])
+  @@index([requestedById])
+  @@index([approvedById])
+  @@index([createdAt])
 }
 
 model AdvancePayment {
@@ -233,9 +319,13 @@ model AdvancePayment {
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, cycleStartDate, cycleEndDate])
+  @@index([employeeId, payCycleType, cycleStartDate, cycleEndDate])
+  @@index([employeeId, settlementStatus, cycleStartDate])
+  @@index([employeeId, isSettled])
   @@index([payCycleType])
   @@index([settlementStatus])
   @@index([lockedByPayrollId])
+  @@index([createdAt])
 }
 
 model Payroll {
@@ -245,6 +335,7 @@ model Payroll {
   periodEnd   DateTime
 
   salaryType       SalaryType
+  activePayrollKey String?    @unique
   grossSalary      Decimal    @db.Decimal(12, 2)
   standardSalary   Decimal    @default(0) @db.Decimal(12, 2)
   otTotalHours     Decimal    @default(0) @db.Decimal(8, 2)
@@ -297,8 +388,14 @@ model Payroll {
 
   @@unique([employeeId, periodStart, periodEnd, version])
   @@index([employeeId, periodStart, periodEnd])
+  @@index([employeeId, status, periodEnd])
+  @@index([employeeId, status, periodStart, periodEnd])
+  @@index([periodStart, periodEnd, status])
+  @@index([salaryType, periodStart, periodEnd])
   @@index([status])
   @@index([cancelledById])
+  @@index([replacedPayrollId])
+  @@index([createdAt])
 }
 
 model PayrollCarryForward {
@@ -321,15 +418,18 @@ model PayrollCarryForward {
   updatedAt DateTime @updatedAt
 
   @@index([employeeId])
+  @@index([employeeId, status])
+  @@index([employeeId, status, cycleStartDate])
   @@index([sourcePayrollId])
   @@index([status])
   @@index([cycleStartDate, cycleEndDate])
+  @@index([createdAt])
 }
 
 model Payslip {
   id          String   @id @default(uuid())
   employeeId  String
-  payrollId   String
+  payrollId   String   @unique
   periodStart DateTime
   periodEnd   DateTime
 
@@ -338,19 +438,22 @@ model Payslip {
   absentDays  Decimal @db.Decimal(5, 2)
   halfDays    Decimal @db.Decimal(5, 2)
 
-  salaryBreakdown  Json
-  standardSalary   Decimal @default(0) @db.Decimal(12, 2)
-  otTotalHours     Decimal @default(0) @db.Decimal(8, 2)
-  otHourlyRate     Decimal @default(0) @db.Decimal(12, 2)
-  otEarnings       Decimal @default(0) @db.Decimal(12, 2)
+  salaryBreakdown   Json
+  standardSalary    Decimal @default(0) @db.Decimal(12, 2)
+  otTotalHours      Decimal @default(0) @db.Decimal(8, 2)
+  otHourlyRate      Decimal @default(0) @db.Decimal(12, 2)
+  otEarnings        Decimal @default(0) @db.Decimal(12, 2)
   overtimeBreakdown Json?
-  advanceDeduction Decimal @db.Decimal(12, 2)
-  finalSalary      Decimal @db.Decimal(12, 2)
+  advanceDeduction  Decimal @db.Decimal(12, 2)
+  finalSalary       Decimal @db.Decimal(12, 2)
 
   payrollVersion Int
   isRecalculated Boolean @default(false)
 
-  pdfUrl String?
+  pdfUrl         String?
+  status         PayslipStatus @default(PENDING)
+  pdfGeneratedAt DateTime?
+  errorMessage   String?
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   payroll  Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
@@ -360,7 +463,12 @@ model Payslip {
 
   @@unique([employeeId, periodStart, periodEnd, payrollVersion])
   @@index([employeeId])
+  @@index([employeeId, periodStart, periodEnd])
   @@index([payrollId])
+  @@index([periodStart, periodEnd])
+  @@index([status])
+  @@index([status, createdAt])
+  @@index([createdAt])
 }
 
 model LedgerEntry {
@@ -380,7 +488,11 @@ model LedgerEntry {
   createdAt DateTime @default(now())
 
   @@index([employeeId, date])
+  @@index([employeeId, type, date])
+  @@index([payrollId])
   @@index([type])
+  @@index([date])
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -418,6 +530,39 @@ model AuditLog {
   @@index([entityId])
   @@index([status])
   @@index([createdAt])
+  @@index([module, createdAt])
+  @@index([action, createdAt])
+  @@index([userId, createdAt])
+  @@index([employeeId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AuditLogArchive {
+  id                String   @id
+  userId            String?
+  employeeId        String?
+  action            String
+  module            String
+  entityId          String?
+  oldData           Json?
+  newData           Json?
+  description       String?
+  status            String?
+  ipAddress         String?
+  userAgent         String?
+  deviceInfo        String?
+  requestId         String?
+  sessionId         String?
+  originalCreatedAt DateTime
+  archivedAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([employeeId])
+  @@index([module])
+  @@index([action])
+  @@index([status])
+  @@index([originalCreatedAt])
+  @@index([archivedAt])
 }
 
 model SystemSetting {
@@ -445,20 +590,64 @@ model WorkHourSetting {
 
   @@unique([effectiveFromDate])
   @@index([effectiveFromDate])
+  @@index([effectiveFromDate, isActive])
   @@index([isActive])
+  @@index([createdAt])
 }
 
 model SchedulerRun {
-  id           String    @id @default(uuid())
-  name         String
-  startedAt    DateTime
-  finishedAt   DateTime?
-  success      Boolean   @default(false)
-  errorMessage String?
-  metadata     Json?
+  id                 String             @id @default(uuid())
+  name               String
+  status             SchedulerRunStatus @default(PENDING)
+  totalEmployees     Int                @default(0)
+  processedEmployees Int                @default(0)
+  successCount       Int                @default(0)
+  skippedCount       Int                @default(0)
+  failedCount        Int                @default(0)
+  startedAt          DateTime?
+  completedAt        DateTime?
+  errorMessage       String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
-  createdAt DateTime @default(now())
+  items SchedulerRunItem[]
 
   @@index([name])
-  @@index([success])
+  @@index([status])
+  @@index([createdAt])
+  @@index([name, createdAt])
+  @@index([status, createdAt])
+}
+
+model SchedulerRunItem {
+  id           String                 @id @default(uuid())
+  runId        String
+  employeeId   String?
+  employeeCode String?
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  status       SchedulerRunItemStatus
+  reason       String?
+  errorMessage String?
+  payrollId    String?
+  createdAt    DateTime               @default(now())
+
+  run SchedulerRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model WorkerHeartbeat {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  lastSeenAt DateTime
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([lastSeenAt])
 }

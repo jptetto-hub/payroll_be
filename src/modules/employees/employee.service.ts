@@ -5,6 +5,10 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import { CacheService } from "../../utils/cache";
+import { env } from "../../config/env";
+
+const EMPLOYEE_OPTIONS_CACHE_TTL = 60 * 5;
 
 export class EmployeeService {
   static async createEmployee(data: any, currentUserRole: Role) {
@@ -39,15 +43,22 @@ export class EmployeeService {
     const count = await EmployeeRepository.countEmployees();
     const employeeCode = `EMP${String(count + 1).padStart(3, "0")}`;
 
-    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const hashedPassword = await bcrypt.hash(data.password, env.bcryptSaltRounds);
 
-    return EmployeeRepository.create({
+    const employee = await EmployeeRepository.create({
       ...data,
       email: data.email || null,
       employeeCode,
       password: hashedPassword,
       joiningDate: new Date(data.joiningDate),
     });
+
+    await Promise.all([
+      CacheService.delByPattern("employee-options:*"),
+      CacheService.delByPattern("dashboard-summary:*"),
+    ]);
+
+    return employee;
   }
 
   static async listEmployees(query: any) {
@@ -67,6 +78,42 @@ export class EmployeeService {
       data: employees,
       pagination: buildPaginationMeta(total, page, limit),
     };
+  }
+
+  static async employeeOptions(query: any) {
+    const search = String(query.search ?? query.q ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+    const limit = Math.min(Math.max(Number(query.limit || 20), 1), 50);
+    const key = CacheService.buildKey(
+      "employee-options",
+      search.toLowerCase() || "all",
+      limit,
+    );
+    const cached = await CacheService.get<any[]>(key);
+
+    if (cached) {
+      return cached;
+    }
+
+    const employees = await EmployeeRepository.options({
+      search,
+      limit,
+    });
+
+    const options = employees.map((employee) => ({
+      id: employee.id,
+      label: `${employee.employeeCode} - ${employee.name}`,
+      name: employee.name,
+      employeeCode: employee.employeeCode,
+      salaryType: employee.salaryType,
+      status: employee.status,
+      role: employee.role,
+    }));
+
+    await CacheService.set(key, options, EMPLOYEE_OPTIONS_CACHE_TTL);
+
+    return options;
   }
 
   static async getEmployeeById(id: string) {
@@ -102,11 +149,18 @@ export class EmployeeService {
       }
     }
 
-    return EmployeeRepository.update(id, {
+    const updatedEmployee = await EmployeeRepository.update(id, {
       ...data,
       email: data.email === "" ? null : data.email,
       ...(data.joiningDate && { joiningDate: new Date(data.joiningDate) }),
     });
+
+    await Promise.all([
+      CacheService.delByPattern("employee-options:*"),
+      CacheService.delByPattern("dashboard-summary:*"),
+    ]);
+
+    return updatedEmployee;
   }
 
   static async updateStatus(
@@ -127,7 +181,14 @@ export class EmployeeService {
       throw new Error("Only SUPER_ADMIN can update SUPER_ADMIN status");
     }
 
-    return EmployeeRepository.updateStatus(id, status);
+    const updatedEmployee = await EmployeeRepository.updateStatus(id, status);
+
+    await Promise.all([
+      CacheService.delByPattern("employee-options:*"),
+      CacheService.delByPattern("dashboard-summary:*"),
+    ]);
+
+    return updatedEmployee;
   }
 
   static async updateRole(id: string, role: Role, currentUserRole: Role) {
@@ -145,6 +206,10 @@ export class EmployeeService {
       throw new Error("SUPER_ADMIN role cannot be downgraded directly");
     }
 
-    return EmployeeRepository.updateRole(id, role);
+    const updatedEmployee = await EmployeeRepository.updateRole(id, role);
+
+    await CacheService.delByPattern("employee-options:*");
+
+    return updatedEmployee;
   }
 }

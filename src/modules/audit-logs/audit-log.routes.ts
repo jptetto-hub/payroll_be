@@ -21,6 +21,12 @@ router.get(
 );
 
 router.get(
+  "/archive",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  AuditLogController.listArchive,
+);
+
+router.get(
   "/user/:userId",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   AuditLogController.listByUser,

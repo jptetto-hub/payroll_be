@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma";
+import { CacheService } from "../utils/cache";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const db = prisma as any;
@@ -111,6 +112,60 @@ export class OvertimeService {
 
       return defaultSetting;
     }
+  }
+
+  static async getSettingsForDateRange(periodStart: Date, periodEnd: Date) {
+    const key = CacheService.buildKey(
+      "work-hours",
+      formatDateOnly(periodStart),
+      formatDateOnly(periodEnd),
+    );
+    const cached = await CacheService.get<any[]>(key);
+
+    if (cached) {
+      return cached.map((setting) => ({
+        ...setting,
+        effectiveFromDate: new Date(setting.effectiveFromDate),
+        createdAt: setting.createdAt ? new Date(setting.createdAt) : setting.createdAt,
+        updatedAt: setting.updatedAt ? new Date(setting.updatedAt) : setting.updatedAt,
+      }));
+    }
+
+    await this.getSettingForDate(periodStart);
+
+    const settings = await db.workHourSetting.findMany({
+      where: {
+        isActive: true,
+        effectiveFromDate: {
+          lte: periodEnd,
+        },
+      },
+      orderBy: {
+        effectiveFromDate: "asc",
+      },
+    });
+
+    await CacheService.set(key, settings, 60 * 10);
+
+    return settings;
+  }
+
+  static resolveSettingFromList(settings: any[], date: Date) {
+    let selected = settings[0];
+
+    for (const setting of settings) {
+      if (setting.effectiveFromDate <= date) {
+        selected = setting;
+      } else {
+        break;
+      }
+    }
+
+    if (!selected) {
+      throw new Error("Work hour setting not found");
+    }
+
+    return selected;
   }
 
   static async calculateForAttendance(params: {

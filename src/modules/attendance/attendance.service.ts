@@ -4,6 +4,10 @@ import {
   buildPaginationMeta,
   getPagination,
 } from "../../shared/utils/pagination.util";
+import {
+  buildCursorPaginationMeta,
+  getCursorPagination,
+} from "../../shared/utils/cursor-pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAttendanceNotLocked } from "../../shared/payroll/payroll-lock.util";
 import { OvertimeService } from "../../services/overtime.service";
@@ -190,7 +194,6 @@ export class AttendanceService {
       throw new Error("USER cannot list all attendance");
     }
 
-    const { page, limit, skip, take } = getPagination(query);
     const fromDate = query.from ? normalizeDate(query.from) : undefined;
     const toDate = query.to ? normalizeDate(query.to) : undefined;
 
@@ -202,10 +205,24 @@ export class AttendanceService {
       ensureValidRange(fromDate, toDate);
     }
 
-    const [attendance, total] = await AttendanceRepository.list({
+    if (!query.employeeId) {
+      const { limit, cursor } = getCursorPagination(query);
+      const attendance = await AttendanceRepository.list({
+        take: limit + 1,
+        ...(cursor && { cursor }),
+        ...(query.status && { status: query.status }),
+        ...(fromDate && { from: fromDate }),
+        ...(toDate && { to: toDate }),
+      });
+
+      return buildCursorPaginationMeta(attendance, limit);
+    }
+
+    const { page, limit, skip, take } = getPagination(query);
+    const [attendance, total] = await AttendanceRepository.listWithCount({
       skip,
       take,
-      ...(query.employeeId && { employeeId: query.employeeId }),
+      employeeId: query.employeeId,
       ...(query.status && { status: query.status }),
       ...(fromDate && { from: fromDate }),
       ...(toDate && { to: toDate }),

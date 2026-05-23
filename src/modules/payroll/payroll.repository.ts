@@ -1,5 +1,9 @@
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 import { PayrollStatus, Prisma } from "@prisma/client";
+import { CacheService } from "../../utils/cache";
+
+const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
+const SETTINGS_CACHE_TTL = 60 * 10;
 
 export class PayrollRepository {
   static findEmployee(employeeId: string) {
@@ -17,8 +21,22 @@ export class PayrollRepository {
     });
   }
 
-  static getSystemSetting() {
-    return prisma.systemSetting.findFirst();
+  static async getSystemSetting() {
+    const cached = await CacheService.get<any>(SYSTEM_SETTINGS_CACHE_KEY);
+
+    if (cached) {
+      return cached;
+    }
+
+    const setting = await prisma.systemSetting.findFirst();
+
+    await CacheService.set(
+      SYSTEM_SETTINGS_CACHE_KEY,
+      setting,
+      SETTINGS_CACHE_TTL,
+    );
+
+    return setting;
   }
 
   static findActivePayroll(
@@ -34,6 +52,21 @@ export class PayrollRepository {
         status: {
           in: [PayrollStatus.GENERATED, PayrollStatus.PAID],
         },
+      },
+    });
+  }
+
+  static findByActivePayrollKey(activePayrollKey: string) {
+    return prisma.payroll.findUnique({
+      where: {
+        activePayrollKey,
+      },
+      select: {
+        id: true,
+        status: true,
+        version: true,
+        periodStart: true,
+        periodEnd: true,
       },
     });
   }
@@ -72,8 +105,8 @@ export class PayrollRepository {
   }
 
   static list(params: {
-    skip: number;
     take: number;
+    cursor?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     status?: PayrollStatus;
   }) {
@@ -82,28 +115,44 @@ export class PayrollRepository {
       ...(params.status && { status: params.status }),
     };
 
-    return prisma.$transaction([
-      prisma.payroll.findMany({
+    return readPrisma.payroll.findMany({
         where,
-        skip: params.skip,
         take: params.take,
-        include: {
+        ...(params.cursor
+          ? {
+              skip: 1,
+              cursor: { id: params.cursor },
+            }
+          : {}),
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          employeeId: true,
+          periodStart: true,
+          periodEnd: true,
+          salaryType: true,
+          grossSalary: true,
+          standardSalary: true,
+          otTotalHours: true,
+          otEarnings: true,
+          advanceDeduction: true,
+          finalSalary: true,
+          version: true,
+          status: true,
+          isRecalculated: true,
+          createdAt: true,
           employee: {
             select: {
               id: true,
               employeeCode: true,
               name: true,
-              phone: true,
               department: true,
               designation: true,
               salaryType: true,
             },
           },
         },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.payroll.count({ where }),
-    ]);
+      });
   }
 
   static findById(id: string) {
@@ -131,7 +180,7 @@ export class PayrollRepository {
     employeeId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.payroll.findMany({
+    return readPrisma.payroll.findMany({
       where: { employeeId },
       ...(pagination && {
         skip: pagination.skip,
@@ -142,7 +191,7 @@ export class PayrollRepository {
   }
 
   static countByEmployee(employeeId: string) {
-    return prisma.payroll.count({
+    return readPrisma.payroll.count({
       where: { employeeId },
     });
   }
@@ -172,6 +221,7 @@ export class PayrollRepository {
         where: { id: params.oldPayrollId },
         data: {
           status: PayrollStatus.SUPERSEDED,
+          activePayrollKey: null,
         },
       });
 

@@ -29,6 +29,12 @@ router.get(
 );
 
 router.get(
+  "/options",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  EmployeeController.options,
+);
+
+router.get(
   "/:id",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   EmployeeController.getById,

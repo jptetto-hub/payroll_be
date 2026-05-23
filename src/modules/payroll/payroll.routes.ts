@@ -4,6 +4,8 @@ import { PayrollController } from "./payroll.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { allowRoles } from "../../middlewares/rbac.middleware";
 import { validate } from "../../middlewares/validate.middleware";
+import { noStore } from "../../middlewares/cacheHeaders.middleware";
+import { sensitiveActionRateLimiter } from "../../middlewares/rateLimit.middleware";
 import {
   deletePayrollSchema,
   generatePayrollSchema,
@@ -17,6 +19,8 @@ router.use(authMiddleware);
 router.post(
   "/generate",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
+  noStore(),
   validate(generatePayrollSchema),
   PayrollController.generate,
 );
@@ -36,6 +40,7 @@ router.get(
 router.post(
   "/:id/recalculate",
   allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   validate(recalculatePayrollSchema),
   PayrollController.recalculate,
 );
@@ -43,6 +48,7 @@ router.post(
 router.delete(
   "/:id",
   allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   validate(deletePayrollSchema),
   PayrollController.delete,
 );

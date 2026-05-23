@@ -105,4 +105,21 @@ export class PayslipController {
       next(error);
     }
   }
+
+  static async retryGeneration(
+    req: Request<PayslipParams>,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      await PayslipService.retryGeneration(req.params.id);
+
+      res.json({
+        success: true,
+        message: "Payslip generation retry queued",
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

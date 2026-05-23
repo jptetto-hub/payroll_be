@@ -7,6 +7,7 @@ import {
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAdvanceCycleNotLocked } from "../../shared/payroll/payroll-lock.util";
+import { CacheService } from "../../utils/cache";
 
 const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -274,6 +275,11 @@ export class AdvanceService {
       date: advanceDate,
     });
 
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("advance-summary:*"),
+    ]);
+
     return {
       advance,
       ledgerEntry,
@@ -496,7 +502,14 @@ export class AdvanceService {
       newAmount: data.amount ?? Number(advance.amount),
       excludeAdvanceId: advance.id,
     });
-    return AdvanceRepository.update(id, updateData);
+    const updatedAdvance = await AdvanceRepository.update(id, updateData);
+
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("advance-summary:*"),
+    ]);
+
+    return updatedAdvance;
   }
 
   static async deleteAdvance(
@@ -528,6 +541,13 @@ export class AdvanceService {
       cycleEndDate: advance.cycleEndDate,
     });
 
-    return AdvanceRepository.delete(id);
+    const deletedAdvance = await AdvanceRepository.delete(id);
+
+    await Promise.all([
+      CacheService.delByPattern("dashboard-summary:*"),
+      CacheService.delByPattern("advance-summary:*"),
+    ]);
+
+    return deletedAdvance;
   }
 }

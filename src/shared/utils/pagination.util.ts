@@ -14,9 +14,12 @@ export type PaginationMeta = {
   hasPreviousPage: boolean;
 };
 
+export const DEFAULT_PAGE_SIZE = 20;
+export const MAX_PAGE_SIZE = 100;
+
 export const getPagination = (query: PaginationQuery) => {
   const page = Number(query.page ?? 1);
-  const limit = Number(query.limit ?? 10);
+  const limit = Number(query.limit ?? DEFAULT_PAGE_SIZE);
 
   if (!Number.isInteger(page) || page < 1) {
     throw new AppError("page must be a positive number", 400);
@@ -26,7 +29,7 @@ export const getPagination = (query: PaginationQuery) => {
     throw new AppError("limit must be a positive number", 400);
   }
 
-  const safeLimit = Math.min(limit, 100);
+  const safeLimit = Math.min(limit, MAX_PAGE_SIZE);
   const skip = (page - 1) * safeLimit;
 
   return {

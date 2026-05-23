@@ -1,7 +1,10 @@
 import { Request, Response, NextFunction } from "express";
+import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { AppError } from "../shared/utils/app-error";
 import { AuditLogService } from "../modules/audit-logs/audit-log.service";
+import { logger } from "../config/logger";
+import { Sentry } from "../config/sentry";
 
 export const errorHandler = async (
   error: any,
@@ -9,8 +12,15 @@ export const errorHandler = async (
   res: Response,
   _next: NextFunction,
 ) => {
+  const isPrismaTransactionTimeout =
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2028" ||
+      error.message?.includes("Unable to start a transaction"));
+
   const statusCode =
-    error instanceof AppError
+    isPrismaTransactionTimeout
+      ? 503
+      : error instanceof AppError
       ? error.statusCode
       : error?.statusCode
         ? error.statusCode
@@ -22,7 +32,7 @@ export const errorHandler = async (
               ? 404
               : error instanceof ZodError
                 ? 400
-                : 400;
+                : 500;
 
   AuditLogService.log({
     userId: req.user?.id,
@@ -45,8 +55,38 @@ export const errorHandler = async (
         ? { issues: error.issues }
         : { message: error?.message || "Internal server error" },
   }).catch((auditError) => {
-    console.error("Audit failure log failed:", auditError);
+    logger.error({ error: auditError }, "Audit failure log failed");
   });
+
+  logger.error(
+    {
+      requestId: (req as any).requestId,
+      method: req.method,
+      path: req.originalUrl,
+      statusCode,
+      userId: req.user?.id,
+      role: req.user?.role,
+      error: {
+        message: error?.message,
+        stack: error?.stack,
+      },
+    },
+    "API request failed",
+  );
+
+  if (process.env.SENTRY_DSN) {
+    Sentry.captureException(error, {
+      tags: {
+        requestId: (req as any).requestId,
+        path: req.originalUrl,
+        method: req.method,
+      },
+      user: {
+        id: req.user?.id,
+        role: req.user?.role,
+      },
+    });
+  }
 
   if (error instanceof ZodError) {
     return res.status(400).json({
@@ -56,12 +96,26 @@ export const errorHandler = async (
     });
   }
 
-  const message = error?.message || "Internal server error";
+  const message = isPrismaTransactionTimeout
+    ? "Database is busy. Please retry in a moment."
+    : process.env.NODE_ENV === "production" && statusCode >= 500
+      ? "Internal server error"
+      : error?.message || "Internal server error";
 
   return res.status(statusCode).json({
     success: false,
     message,
-    errors: error instanceof AppError ? error.errors : error?.errors || [],
+    errors:
+      process.env.NODE_ENV === "production" && statusCode >= 500
+        ? []
+        : error instanceof AppError
+          ? error.errors
+          : error?.errors || [],
+    ...(process.env.NODE_ENV !== "production" &&
+      !isPrismaTransactionTimeout &&
+      error?.stack && {
+        stack: error.stack,
+      }),
   });
 };
 

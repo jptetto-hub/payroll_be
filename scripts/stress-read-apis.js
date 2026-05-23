@@ -10,18 +10,20 @@ const ADMIN_TOKEN = __ENV.ADMIN_TOKEN || __ENV.SUPER_ADMIN_TOKEN;
 const USER_TOKEN = __ENV.USER_TOKEN;
 const EMPLOYEE_ID = __ENV.EMPLOYEE_ID || __ENV.WEEKLY_EMPLOYEE_ID;
 const PAYROLL_ID = __ENV.PAYROLL_ID || __ENV.WEEKLY_PAYROLL_ID;
+const REPORT_FROM = __ENV.REPORT_FROM || __ENV.PERIOD_START || '2026-05-01';
+const REPORT_TO = __ENV.REPORT_TO || __ENV.PERIOD_END || '2026-05-31';
 
 const VUS = Number(__ENV.STRESS_VUS || 10);
 const DURATION = __ENV.STRESS_DURATION || '30s';
-const MAX_P95_MS = Number(__ENV.MAX_P95_MS || 1500);
+const MAX_P95_MS = Number(__ENV.MAX_P95_MS || 1000);
 
 export const options = {
   vus: VUS,
   duration: DURATION,
   thresholds: {
-    http_req_failed: ['rate<0.05'],
+    http_req_failed: ['rate<0.01'],
     http_req_duration: [`p(95)<${MAX_P95_MS}`],
-    errors: ['rate<0.05'],
+    errors: ['rate<0.01'],
   },
 };
 
@@ -62,11 +64,17 @@ function hit(label, method, url, token, body = null) {
 
 export default function () {
   hit('admin employees list', 'GET', `${BASE_URL}/api/employees?page=1&limit=20`, ADMIN_TOKEN);
-  hit('admin attendance list', 'GET', `${BASE_URL}/api/attendance?page=1&limit=20`, ADMIN_TOKEN);
+  hit('admin employee options', 'GET', `${BASE_URL}/api/employees/options?limit=20`, ADMIN_TOKEN);
+  hit('admin attendance list', 'GET', `${BASE_URL}/api/attendance?limit=20`, ADMIN_TOKEN);
   hit('admin advances list', 'GET', `${BASE_URL}/api/advances?page=1&limit=20`, ADMIN_TOKEN);
-  hit('admin payroll list', 'GET', `${BASE_URL}/api/payroll?page=1&limit=20`, ADMIN_TOKEN);
+  hit('admin payroll list', 'GET', `${BASE_URL}/api/payroll?limit=20`, ADMIN_TOKEN);
   hit('admin payslips list', 'GET', `${BASE_URL}/api/payslips?page=1&limit=20`, ADMIN_TOKEN);
-  hit('admin ledger list', 'GET', `${BASE_URL}/api/ledger?page=1&limit=20`, ADMIN_TOKEN);
+  hit('admin ledger list', 'GET', `${BASE_URL}/api/ledger?limit=20`, ADMIN_TOKEN);
+  hit('admin dashboard summary cache', 'GET', `${BASE_URL}/api/dashboard/summary`, ADMIN_TOKEN);
+  hit('admin payroll summary raw report', 'GET', `${BASE_URL}/api/reports/payroll-summary?from=${REPORT_FROM}&to=${REPORT_TO}`, ADMIN_TOKEN);
+  hit('admin ledger summary raw report', 'GET', `${BASE_URL}/api/reports/ledger-summary?from=${REPORT_FROM}&to=${REPORT_TO}`, ADMIN_TOKEN);
+  hit('admin attendance summary raw report', 'GET', `${BASE_URL}/api/reports/attendance-summary?from=${REPORT_FROM}&to=${REPORT_TO}`, ADMIN_TOKEN);
+  hit('admin advance outstanding raw report', 'GET', `${BASE_URL}/api/reports/advance-outstanding`, ADMIN_TOKEN);
 
   if (EMPLOYEE_ID) {
     hit('salary preview read calculation', 'POST', `${BASE_URL}/api/salary-calculation/preview`, ADMIN_TOKEN, {
@@ -93,7 +101,10 @@ export default function () {
 }
 
 export function handleSummary(data) {
+  const p95 = data.metrics.http_req_duration?.percentiles?.['95'] || 'n/a';
+  const failedRate = data.metrics.http_req_failed?.rate || 0;
+
   return {
-    stdout: `\nStress test completed.\nRequests: ${data.metrics.http_reqs?.count || 0}\nFailed request rate: ${data.metrics.http_req_failed?.rate || 0}\nP95 duration ms: ${data.metrics.http_req_duration?.percentiles?.['95'] || 'n/a'}\n`,
+    stdout: `\nStress test completed.\nRequests: ${data.metrics.http_reqs?.count || 0}\nFailed request rate: ${failedRate}\nP95 duration ms: ${p95}\n\nIf this fails thresholds, restart the API with:\nENABLE_PRISMA_QUERY_LOG=true ENABLE_PERFORMANCE_LOG=true SLOW_QUERY_MS=200 SLOW_API_MS=500 npm run dev\n\nThen check backend logs for SLOW_API_REQUEST, SLOW_PRISMA_QUERY, and PERFORMANCE_CHECKPOINT.\n`,
   };
 }

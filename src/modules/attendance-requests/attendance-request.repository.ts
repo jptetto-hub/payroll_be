@@ -4,7 +4,7 @@ import {
   Prisma,
   RequestStatus,
 } from "@prisma/client";
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 import { OvertimeService } from "../../services/overtime.service";
 
 const stripUndefined = (data: Record<string, any>): Record<string, any> =>
@@ -70,7 +70,7 @@ export class AttendanceRequestRepository {
   }
 
   static myRequests(employeeId: string) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         employeeId,
       },
@@ -81,7 +81,7 @@ export class AttendanceRequestRepository {
   }
 
   static pendingRequests() {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         status: RequestStatus.PENDING,
       },
@@ -243,7 +243,7 @@ export class AttendanceRequestRepository {
   }
 
   static findPendingRequestsByDates(employeeId: string, dates: Date[]) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         employeeId,
         attendanceDate: {
@@ -257,11 +257,16 @@ export class AttendanceRequestRepository {
   static myRequestsAll(employeeId: string) {
     return prisma.attendanceRequest.findMany({
       where: { employeeId },
+      select: {
+        id: true,
+        status: true,
+        requestedStatus: true,
+      },
     });
   }
 
   static pendingRequestsAll(employeeWhere?: Prisma.EmployeeWhereInput) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.count({
       where: {
         status: "PENDING",
         ...(employeeWhere && { employee: employeeWhere }),
@@ -270,7 +275,7 @@ export class AttendanceRequestRepository {
   }
 
   static pendingRequestsByEmployee(employeeId: string) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         employeeId,
         status: "PENDING",
@@ -284,7 +289,7 @@ export class AttendanceRequestRepository {
     to?: Date,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         employeeId,
         ...(from &&
@@ -306,7 +311,7 @@ export class AttendanceRequestRepository {
   }
 
   static countMyRequestsWithFilter(employeeId: string, from?: Date, to?: Date) {
-    return prisma.attendanceRequest.count({
+    return readPrisma.attendanceRequest.count({
       where: {
         employeeId,
         ...(from &&
@@ -328,7 +333,7 @@ export class AttendanceRequestRepository {
     },
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.attendanceRequest.findMany({
+    return readPrisma.attendanceRequest.findMany({
       where: {
         status: "PENDING",
         ...(params.employeeWhere && { employee: params.employeeWhere }),
@@ -340,7 +345,28 @@ export class AttendanceRequestRepository {
             },
           }),
       },
-      include: {
+      select: {
+        id: true,
+        employeeId: true,
+        attendanceDate: true,
+        oldStatus: true,
+        requestedStatus: true,
+        requestType: true,
+        reason: true,
+        status: true,
+        requestedById: true,
+        approvedById: true,
+        approvedAt: true,
+        rejectionReason: true,
+        requestedCheckInTime: true,
+        requestedCheckOutTime: true,
+        requestedOtStartTime: true,
+        requestedOtEndTime: true,
+        requestedOtHours: true,
+        requestedOtManualOverride: true,
+        requestedOtOverrideReason: true,
+        createdAt: true,
+        updatedAt: true,
         employee: {
           select: {
             id: true,
@@ -368,7 +394,7 @@ export class AttendanceRequestRepository {
     from?: Date;
     to?: Date;
   }) {
-    return prisma.attendanceRequest.count({
+    return readPrisma.attendanceRequest.count({
       where: {
         status: "PENDING",
         ...(params.employeeWhere && { employee: params.employeeWhere }),

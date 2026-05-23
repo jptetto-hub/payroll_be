@@ -1,14 +1,54 @@
 import { Request, Response, NextFunction } from "express";
+import { Role } from "@prisma/client";
 import { DashboardService } from "./dashboard.service";
+import {
+  DashboardSummaryService,
+  parseDashboardSummaryRange,
+} from "./dashboard-summary.service";
 
 export class DashboardController {
   static async summary(req: Request, res: Response, next: NextFunction) {
     try {
+      if (
+        (req.user.role === Role.ADMIN || req.user.role === Role.SUPER_ADMIN) &&
+        !req.query.employeeId
+      ) {
+        const range = parseDashboardSummaryRange(req.query);
+        const data = await DashboardSummaryService.getOrRefreshGlobalSummary(
+          range,
+        );
+
+        return res.json({
+          success: true,
+          message: "Dashboard summary fetched successfully",
+          data,
+        });
+      }
+
       const data = await DashboardService.summary(req.query, req.user);
 
-      res.json({
+      return res.json({
         success: true,
         message: "Dashboard summary fetched successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async refreshSummary(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const range = parseDashboardSummaryRange(req.body);
+      const data = await DashboardSummaryService.refreshGlobalSummary(range);
+
+      return res.json({
+        success: true,
+        message: "Dashboard summary refreshed",
         data,
       });
     } catch (error) {

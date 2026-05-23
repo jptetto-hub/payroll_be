@@ -1,11 +1,10 @@
 import app from "./app";
 import { env } from "./config/env";
-import { startPayrollCron } from "./cron/payroll.cron";
+import { logger } from "./config/logger";
+import { initSentry } from "./config/sentry";
+
+initSentry();
 
 app.listen(env.port, () => {
-  console.log(`Server running on port ${env.port}`);
-
-  startPayrollCron().catch((error) => {
-    console.error("Payroll scheduler failed to start", error);
-  });
+  logger.info({ port: env.port }, "Server started");
 });

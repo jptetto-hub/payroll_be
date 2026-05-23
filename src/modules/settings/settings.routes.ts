@@ -9,6 +9,7 @@ import {
   updateSettingsSchema,
   updateWorkHourSettingSchema,
 } from "./settings.validator";
+import { sensitiveActionRateLimiter } from "../../middlewares/rateLimit.middleware";
 
 const router = Router();
 
@@ -25,6 +26,7 @@ router.get(
 router.post(
   "/work-hours",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   validate(createWorkHourSettingSchema),
   SettingsController.createWorkHourSetting,
 );
@@ -32,6 +34,7 @@ router.post(
 router.patch(
   "/work-hours/:id",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   validate(updateWorkHourSettingSchema),
   SettingsController.updateWorkHourSetting,
 );
@@ -39,12 +42,14 @@ router.patch(
 router.delete(
   "/work-hours/:id",
   allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   SettingsController.deleteWorkHourSetting,
 );
 
 router.patch(
   "/",
   allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
   validate(updateSettingsSchema),
   SettingsController.update,
 );

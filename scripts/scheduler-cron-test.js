@@ -10,7 +10,7 @@ const SUPER_ADMIN_PHONE = process.env.SUPER_ADMIN_PHONE;
 const SUPER_ADMIN_PASSWORD = process.env.SUPER_ADMIN_PASSWORD;
 const RUN_SCHEDULER = String(process.env.RUN_SCHEDULER || "false").toLowerCase() === "true";
 const DEFAULT_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 30000);
-const SCHEDULER_TIMEOUT_MS = Number(process.env.SCHEDULER_TIMEOUT_MS || 120000);
+const SCHEDULER_TIMEOUT_MS = Number(process.env.SCHEDULER_TIMEOUT_MS || 5000);
 
 const results = { passed: 0, failed: 0, warned: 0, skipped: 0 };
 
@@ -200,18 +200,18 @@ async function testManualSchedulerRun(superAdminToken) {
   }
 
   if (!RUN_SCHEDULER) {
-    skip("Manual scheduler run skipped. Set RUN_SCHEDULER=true to execute POST /api/scheduler/run-payroll.");
+    skip("Manual scheduler run skipped. Set RUN_SCHEDULER=true to execute POST /api/scheduler/run.");
     return;
   }
 
   warn("RUN_SCHEDULER=true enabled. This may create payrolls for completed eligible periods.");
-  warn(`Manual scheduler endpoint timeout is ${SCHEDULER_TIMEOUT_MS}ms. You can increase it with SCHEDULER_TIMEOUT_MS=300000 if needed.`);
+  warn(`Manual scheduler start endpoint timeout is ${SCHEDULER_TIMEOUT_MS}ms. It should return 202 quickly because payroll runs in the background.`);
 
   const beforeRuns = await request("GET", "/api/scheduler/runs?page=1&limit=1", {
     token: superAdminToken,
   });
 
-  const res = await request("POST", "/api/scheduler/run-payroll", {
+  const res = await request("POST", "/api/scheduler/run", {
     token: superAdminToken,
     timeoutMs: SCHEDULER_TIMEOUT_MS,
   });
@@ -236,26 +236,58 @@ async function testManualSchedulerRun(superAdminToken) {
   }
 
   if (res.status >= 500) {
-    fail("Manual scheduler run returned server error", res.data);
+    fail("Manual scheduler start returned server error", res.data);
     return;
   }
 
   if (!res.ok) {
-    warn(`Manual scheduler run responded with ${res.status}. This may be valid if business validation blocks generation.`, res.data);
+    warn(`Manual scheduler start responded with ${res.status}. This may be valid if Redis/background queue is unavailable.`, res.data);
     return;
   }
 
-  pass("Manual payroll scheduler run completed without server error");
+  if (res.status === 202) pass("Manual scheduler start returns 202 Accepted");
+  else warn(`Manual scheduler start returned ${res.status}; expected 202 Accepted`, res.data);
 
-  const data = res.data?.data;
-  const keys = ["totalEmployees", "successCount", "skippedCount", "failureCount", "generated", "skipped", "failed"];
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(data || {}, key)) pass(`Scheduler result contains ${key}`);
-    else warn(`Scheduler result missing ${key}`, res.data);
+  if (res.data?.success === true) pass("Manual scheduler start response has success=true");
+  else warn("Manual scheduler start response missing success=true", res.data);
+
+  const jobId = res.data?.jobId;
+  if (jobId) pass("Manual scheduler start response contains jobId");
+  else warn("Manual scheduler start response missing jobId", res.data);
+
+  if (["PENDING", "RUNNING"].includes(res.data?.status)) {
+    pass("Manual scheduler start response contains async status");
+  } else {
+    warn("Manual scheduler start response status should be PENDING or RUNNING", res.data);
   }
 
-  if (data?.failureCount > 0) {
-    warn("Scheduler completed with employee-level failures. Review failed array.", data.failed);
+  if (jobId) {
+    const statusRes = await request("GET", `/api/scheduler/runs/${jobId}`, {
+      token: superAdminToken,
+    });
+
+    if (statusRes.ok) {
+      pass("Scheduler run status can be fetched by jobId");
+      const run = statusRes.data?.data;
+      const keys = [
+        "id",
+        "status",
+        "totalEmployees",
+        "processedEmployees",
+        "successCount",
+        "skippedCount",
+        "failedCount",
+        "startedAt",
+        "completedAt",
+      ];
+
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(run || {}, key)) pass(`Scheduler status contains ${key}`);
+        else warn(`Scheduler status missing ${key}`, statusRes.data);
+      }
+    } else {
+      warn("Scheduler run status fetch by jobId failed", statusRes.data);
+    }
   }
 
   const afterRuns = await request("GET", "/api/scheduler/runs?page=1&limit=1", {
@@ -267,8 +299,8 @@ async function testManualSchedulerRun(superAdminToken) {
 
   if (beforeRuns.ok && afterRuns.ok) {
     const latest = afterRuns.data?.data?.[0];
-    if (latest?.name === "PAYROLL_SCHEDULER") pass("Latest scheduler run is PAYROLL_SCHEDULER");
-    else warn("Latest scheduler run name was not PAYROLL_SCHEDULER", latest);
+    if (latest?.name === "MANUAL_PAYROLL_SCHEDULER") pass("Latest scheduler run is MANUAL_PAYROLL_SCHEDULER");
+    else warn("Latest scheduler run name was not MANUAL_PAYROLL_SCHEDULER", latest);
   }
 }
 

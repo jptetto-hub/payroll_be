@@ -26,6 +26,21 @@ export class AuditLogController {
     }
   }
 
+  static async listArchive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await AuditLogService.listArchive(req.query);
+
+      res.json({
+        success: true,
+        message: "Archived audit logs fetched successfully",
+        data: result.data,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async export(req: Request, res: Response, next: NextFunction) {
     try {
       const logs = await AuditLogService.export(req.query);
