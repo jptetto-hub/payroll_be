@@ -90,39 +90,22 @@ export class EmployeeRepository {
   }
 
   static options(params: { search?: string; limit: number }) {
-    const tokens = params.search
-      ?.split(/\s+/)
-      .map((token) => token.trim())
-      .filter(Boolean);
+    const search = params.search?.trim();
 
     return readPrisma.employee.findMany({
       where: {
         status: EmployeeStatus.ACTIVE,
-        ...(tokens?.length && {
-          AND: tokens.map((token) => ({
-            OR: [
-              { name: { contains: token, mode: "insensitive" as const } },
-              {
-                employeeCode: {
-                  contains: token,
-                  mode: "insensitive" as const,
-                },
+        ...(search && {
+          OR: [
+            { name: { contains: search, mode: "insensitive" as const } },
+            {
+              employeeCode: {
+                contains: search,
+                mode: "insensitive" as const,
               },
-              { phone: { contains: token } },
-              {
-                department: {
-                  contains: token,
-                  mode: "insensitive" as const,
-                },
-              },
-              {
-                designation: {
-                  contains: token,
-                  mode: "insensitive" as const,
-                },
-              },
-            ],
-          })),
+            },
+            { phone: { contains: search } },
+          ],
         }),
       },
       take: Math.min(Math.max(params.limit, 1), 50),

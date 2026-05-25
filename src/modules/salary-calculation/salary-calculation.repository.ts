@@ -117,18 +117,22 @@ export class SalaryCalculationRepository {
     periodStart: Date,
     periodEnd: Date,
   ) {
-    const advances = await this.getAdvances(employeeId, periodStart, periodEnd);
+    const [advances, cancelledPayrolls] = await Promise.all([
+      this.getAdvances(employeeId, periodStart, periodEnd),
+      prisma.payroll.findMany({
+        where: {
+          employeeId,
+          periodStart,
+          periodEnd,
+          status: PayrollStatus.CANCELLED,
+        },
+        select: {
+          advanceBreakdown: true,
+        },
+        orderBy: [{ version: "desc" }, { createdAt: "desc" }],
+      }),
+    ]);
     const includedIds = new Set(advances.map((advance) => advance.id));
-
-    const cancelledPayrolls = await prisma.payroll.findMany({
-      where: {
-        employeeId,
-        periodStart,
-        periodEnd,
-        status: PayrollStatus.CANCELLED,
-      },
-      orderBy: [{ version: "desc" }, { createdAt: "desc" }],
-    });
 
     const snapshotAdvancesById = new Map<string, any>();
     for (const payroll of cancelledPayrolls) {

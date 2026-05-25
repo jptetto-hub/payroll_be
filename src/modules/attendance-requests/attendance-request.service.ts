@@ -49,6 +49,36 @@ const ensureNotFutureDate = (date: Date) => {
   }
 };
 
+const isSunday = (date: Date) => date.getUTCDay() === 0;
+
+const ensureSundayRequestIsOtOnly = (
+  attendanceDate: Date,
+  item: {
+    requestedCheckInTime?: string | null;
+    requestedCheckOutTime?: string | null;
+    requestedOtStartTime?: string | null;
+    requestedOtEndTime?: string | null;
+    requestedOtHours?: number | null;
+  },
+) => {
+  if (!isSunday(attendanceDate)) {
+    return;
+  }
+
+  const hasOt =
+    Number(item.requestedOtHours ?? 0) > 0 ||
+    Boolean(
+      (item.requestedOtStartTime || item.requestedCheckInTime) &&
+        (item.requestedOtEndTime || item.requestedCheckOutTime),
+    );
+
+  if (!hasOt) {
+    throw new Error(
+      "Sunday attendance is skipped. Submit OT start/end or OT hours only for Sunday.",
+    );
+  }
+};
+
 const parseOptionalDate = (value?: string) => {
   if (!value) return undefined;
 
@@ -208,6 +238,7 @@ export class AttendanceRequestService {
 
     for (const item of data.requests) {
       const attendanceDate = normalizeDate(item.attendanceDate);
+      ensureSundayRequestIsOtOnly(attendanceDate, item);
 
       const existingAttendance =
         await AttendanceRequestRepository.findAttendance(

@@ -127,6 +127,7 @@ export class AttendanceController {
         message: "Attendance range fetched successfully",
         data: result.data,
         pagination: result.pagination,
+        rangeSummary: result.rangeSummary,
       });
     } catch (error) {
       next(error);

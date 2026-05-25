@@ -42,9 +42,43 @@ const getAttendanceValue = (status?: AttendanceStatus) => {
   return 0;
 };
 
+const isSunday = (date: Date) => date.getUTCDay() === 0;
+
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+const roundFinalSalary = (amount: number) => Math.round(amount);
 
 const toNumber = (value: unknown) => Number(value ?? 0);
+
+const getWeeklyCarryInSunday = (params: {
+  salaryType: SalaryType;
+  periodStart: Date;
+  joiningDate: Date;
+}) => {
+  if (
+    params.salaryType !== SalaryType.WEEKLY ||
+    params.periodStart.getUTCDay() !== 1
+  ) {
+    return null;
+  }
+
+  const precedingSunday = addDays(params.periodStart, -1);
+
+  return precedingSunday >= params.joiningDate ? precedingSunday : null;
+};
+
+type SalaryPreviewEmployee = {
+  id: string;
+  employeeCode: string;
+  name: string;
+  status: string;
+  salaryType: SalaryType;
+  joiningDate: Date;
+};
+
+type SalaryPreviewOptions = {
+  employee?: SalaryPreviewEmployee;
+  skipActivePayrollSnapshot?: boolean;
+};
 
 const buildPreviewFromPayrollSnapshot = (
   payroll: any,
@@ -172,7 +206,7 @@ export class SalaryCalculationService {
     employeeId: string;
     periodStart: string;
     periodEnd: string;
-  }) {
+  }, options: SalaryPreviewOptions = {}) {
     const timer = new PerformanceTimer("SalaryCalculationService.preview");
     timer.checkpoint("start");
 
@@ -184,9 +218,9 @@ export class SalaryCalculationService {
       throw new Error("periodStart cannot be greater than periodEnd");
     }
 
-    const employee = await SalaryCalculationRepository.findEmployee(
-      data.employeeId,
-    );
+    const employee =
+      options.employee ??
+      (await SalaryCalculationRepository.findEmployee(data.employeeId));
     timer.checkpoint("employee fetch");
 
     if (!employee) {
@@ -216,13 +250,19 @@ export class SalaryCalculationService {
       periodEnd,
       joiningDate: employee.joiningDate,
     });
+    const weeklyCarryInSunday = getWeeklyCarryInSunday({
+      salaryType: employee.salaryType,
+      periodStart,
+      joiningDate: employee.joiningDate,
+    });
 
-    const activePayrollSnapshot =
-      await SalaryCalculationRepository.findActivePayrollSnapshot(
-        data.employeeId,
-        periodStart,
-        periodEnd,
-      );
+    const activePayrollSnapshot = options.skipActivePayrollSnapshot
+      ? null
+      : await SalaryCalculationRepository.findActivePayrollSnapshot(
+          data.employeeId,
+          periodStart,
+          periodEnd,
+        );
     timer.checkpoint("active payroll snapshot fetch");
 
     if (activePayrollSnapshot) {
@@ -241,12 +281,37 @@ export class SalaryCalculationService {
       return snapshotPreview;
     }
 
-    const salaryHistories =
-      await SalaryCalculationRepository.getSalaryHistories(
+    const [
+      salaryHistories,
+      attendanceRecords,
+      workHourSettings,
+      advances,
+      pendingCarryForwards,
+    ] = await Promise.all([
+      SalaryCalculationRepository.getSalaryHistories(
         data.employeeId,
         effectivePeriodEnd,
-      );
-    timer.checkpoint("salary history fetch");
+      ),
+      SalaryCalculationRepository.getAttendance(
+        data.employeeId,
+        weeklyCarryInSunday ?? effectivePeriodStart,
+        effectivePeriodEnd,
+      ),
+      OvertimeService.getSettingsForDateRange(
+        weeklyCarryInSunday ?? effectivePeriodStart,
+        effectivePeriodEnd,
+      ),
+      SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
+        data.employeeId,
+        periodStart,
+        periodEnd,
+      ),
+      PayrollCarryForwardRepository.findPendingByEmployee(
+        data.employeeId,
+        periodStart,
+      ),
+    ]);
+    timer.checkpoint("payroll inputs fetch");
 
     if (salaryHistories.length === 0) {
       throw new Error("No salary history found for this employee");
@@ -268,22 +333,9 @@ export class SalaryCalculationService {
 
     const salaryTimeline = [salaryBeforePeriod, ...salaryChangesInsidePeriod];
 
-    const attendanceRecords = await SalaryCalculationRepository.getAttendance(
-      data.employeeId,
-      effectivePeriodStart,
-      effectivePeriodEnd,
-    );
-    timer.checkpoint("attendance fetch");
-
     const attendanceMap = new Map(
       attendanceRecords.map((item) => [formatDate(item.date), item]),
     );
-
-    const workHourSettings = await OvertimeService.getSettingsForDateRange(
-      effectivePeriodStart,
-      effectivePeriodEnd,
-    );
-    timer.checkpoint("overtime settings fetch");
 
     const segments = [];
 
@@ -352,6 +404,40 @@ export class SalaryCalculationService {
 
       const workingDays = workingDates.length;
 
+      // A Monday-Saturday weekly cycle pays the preceding Sunday OT in this
+      // cycle because Sunday is a rest day outside normal weekly attendance.
+      const overtimeSegmentStart =
+        index === 0 && weeklyCarryInSunday
+          ? weeklyCarryInSunday
+          : segmentStart;
+      const sundayOtRecords = attendanceRecords.filter(
+        (attendance) =>
+          isSunday(attendance.date) &&
+          attendance.date >= overtimeSegmentStart &&
+          attendance.date <= segmentEnd &&
+          Number((attendance as any).otHours ?? 0) > 0,
+      );
+
+      for (const attendance of sundayOtRecords) {
+        const dailyOtHours = Number((attendance as any).otHours ?? 0);
+        const workHourSetting = OvertimeService.resolveSettingFromList(
+          workHourSettings,
+          attendance.date,
+        );
+        const dailyHours = Math.max(
+          Number(workHourSetting.standardMinutes) / 60,
+          1,
+        );
+        const dailyRate =
+          (Number(salary.salaryAmount) / Math.max(workingDays, 1)) /
+          dailyHours;
+        const dailyOtEarnings = roundMoney(dailyRate * dailyOtHours);
+
+        otHours = roundMoney(otHours + dailyOtHours);
+        otEarnings = roundMoney(otEarnings + dailyOtEarnings);
+        otWeightedRateTotal += dailyRate * dailyOtHours;
+      }
+
       const perDaySalary =
         employee.salaryType === SalaryType.MONTHLY
           ? Number(salary.salaryAmount) / workingDays
@@ -418,14 +504,6 @@ export class SalaryCalculationService {
       standardSalary + otEarnings,
     );
 
-    const advances =
-      await SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
-        data.employeeId,
-        periodStart,
-        periodEnd,
-      );
-    timer.checkpoint("advance fetch");
-
     const invalidAdvances = advances.filter(
       (item) => item.payCycleType !== employee.salaryType,
     );
@@ -458,13 +536,6 @@ export class SalaryCalculationService {
       );
     }
 
-    const pendingCarryForwards =
-      await PayrollCarryForwardRepository.findPendingByEmployee(
-        data.employeeId,
-        periodStart,
-      );
-    timer.checkpoint("carry forward fetch");
-
     let remainingGrossForCarryForward = roundMoney(
       grossSalary - advanceDeduction,
     );
@@ -485,6 +556,7 @@ export class SalaryCalculationService {
 
       appliedCarryForwards.push({
         id: item.id,
+        sourcePayrollId: item.sourcePayrollId,
         amount: Number(item.amount),
         remainingAmount: Number(item.remainingAmount),
         appliedAmount: applyAmount,
@@ -495,7 +567,8 @@ export class SalaryCalculationService {
     carryForwardApplied = roundMoney(carryForwardApplied);
     const totalDeduction = roundMoney(advanceDeduction + carryForwardApplied);
     const rawFinalSalary = roundMoney(grossSalary - totalDeduction);
-    const finalSalary = rawFinalSalary < 0 ? 0 : rawFinalSalary;
+    const finalSalary =
+      rawFinalSalary < 0 ? 0 : roundFinalSalary(rawFinalSalary);
     const carryForwardDeduction =
       rawFinalSalary < 0 ? roundMoney(Math.abs(rawFinalSalary)) : 0;
 

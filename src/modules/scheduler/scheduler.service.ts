@@ -474,4 +474,29 @@ export class SchedulerService {
   static async getRunStatus(id: string) {
     return SchedulerRepository.findRunById(id);
   }
+
+  static async listRunItems(runId: string, query: any) {
+    const run = await SchedulerRepository.findRunById(runId);
+
+    if (!run) {
+      return null;
+    }
+
+    const { page, limit, skip, take } = getPagination(query);
+    const status = query.status
+      ? (String(query.status) as SchedulerRunItemStatus)
+      : undefined;
+
+    const [items, total] = await SchedulerRepository.listRunItems({
+      runId,
+      skip,
+      take,
+      ...(status && { status }),
+    });
+
+    return {
+      data: items,
+      pagination: buildPaginationMeta(total, page, limit),
+    };
+  }
 }

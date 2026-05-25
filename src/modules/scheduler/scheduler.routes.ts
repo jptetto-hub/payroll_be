@@ -25,6 +25,11 @@ router.post(
 
 router.get("/runs", allowRoles(Role.SUPER_ADMIN), SchedulerController.runs);
 router.get(
+  "/runs/:id/items",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  SchedulerController.runItems,
+);
+router.get(
   "/runs/:id",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   SchedulerController.runStatus,

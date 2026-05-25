@@ -155,6 +155,8 @@ model Employee {
   @@index([salaryType])
   @@index([status, role])
   @@index([status, salaryType])
+  @@index([status, employeeCode])
+  @@index([status, name])
   @@index([name])
   @@index([createdAt])
 }

@@ -5,6 +5,7 @@ const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const db = prisma as any;
 
 const roundHours = (value: number) => Math.round(value * 100) / 100;
+const isSunday = (date: Date) => date.getUTCDay() === 0;
 
 export const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -191,6 +192,7 @@ export class OvertimeService {
     const otStartTime = params.otStartTime ?? null;
     const otEndTime = params.otEndTime ?? null;
     const manual = Boolean(params.otManualOverride);
+    const restDay = isSunday(params.attendanceDate);
 
     if (checkInTime && checkOutTime && checkOutTime <= checkInTime) {
       throw new Error("Check-out time must be after check-in time");
@@ -204,9 +206,15 @@ export class OvertimeService {
       throw new Error("OT end time must be after OT start time");
     }
 
-    if (otStartTime && otStartTime < standardEnd) {
+    if (
+      !restDay &&
+      otStartTime &&
+      otEndTime &&
+      otStartTime < standardEnd &&
+      otEndTime > standardStart
+    ) {
       throw new Error(
-        `OT start time must be at or after regular work end time ${setting.workEndTime}`,
+        `OT time cannot overlap regular working hours ${setting.workStartTime} to ${setting.workEndTime}`,
       );
     }
 
@@ -241,13 +249,24 @@ export class OvertimeService {
 
     const resolvedOtStart =
       otStartTime ??
-      (checkInTime && checkInTime >= standardEnd ? checkInTime : standardEnd);
+      (restDay
+        ? checkInTime
+        : checkInTime && checkInTime >= standardEnd
+          ? checkInTime
+          : standardEnd);
     const resolvedOtEnd = otEndTime ?? checkOutTime;
-    const startsAfterShift = resolvedOtStart >= standardEnd;
+    const isExplicitOtRange = Boolean(otStartTime && otEndTime);
+    const outsideWorkingHours =
+      restDay ||
+      isExplicitOtRange ||
+      Boolean(resolvedOtStart && resolvedOtStart >= standardEnd);
     const validRange =
-      Boolean(resolvedOtEnd) && resolvedOtEnd! > resolvedOtStart && startsAfterShift;
+      Boolean(resolvedOtStart) &&
+      Boolean(resolvedOtEnd) &&
+      resolvedOtEnd! > resolvedOtStart! &&
+      outsideWorkingHours;
     const otHours = validRange
-      ? roundHours((resolvedOtEnd!.getTime() - resolvedOtStart.getTime()) / 3600000)
+      ? roundHours((resolvedOtEnd!.getTime() - resolvedOtStart!.getTime()) / 3600000)
       : 0;
 
     return {

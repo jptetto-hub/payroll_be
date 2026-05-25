@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { prisma } from "../../config/prisma";
-import { env } from "../../config/env";
+import { AuthSessionService } from "./auth-session.service";
 
 export class AuthService {
   static async login(phone: string, password: string) {
@@ -23,18 +22,12 @@ export class AuthService {
       throw new Error("Invalid phone number or password");
     }
 
-    const token = jwt.sign(
-      {
-        id: employee.id,
-        phone: employee.phone,
-        email: employee.email,
-        role: employee.role,
-      },
-      env.jwtSecret,
-      {
-        expiresIn: env.jwtExpiresIn,
-      },
-    );
+    const { token } = await AuthSessionService.create({
+      id: employee.id,
+      phone: employee.phone,
+      email: employee.email,
+      role: employee.role,
+    });
 
     return {
       token,

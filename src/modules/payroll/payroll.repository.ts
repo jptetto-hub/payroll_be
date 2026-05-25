@@ -5,6 +5,42 @@ import { CacheService } from "../../utils/cache";
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
 
+const buildDateRange = (search: string) => {
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.test(search);
+  const parsed = dateOnlyMatch
+    ? new Date(`${search}T00:00:00.000Z`)
+    : new Date(search);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+
+  const start = new Date(
+    Date.UTC(
+      parsed.getUTCFullYear(),
+      parsed.getUTCMonth(),
+      parsed.getUTCDate(),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
+  const end = new Date(
+    Date.UTC(
+      parsed.getUTCFullYear(),
+      parsed.getUTCMonth(),
+      parsed.getUTCDate(),
+      23,
+      59,
+      59,
+      999,
+    ),
+  );
+
+  return { gte: start, lte: end };
+};
+
 export class PayrollRepository {
   static findEmployee(employeeId: string) {
     return prisma.employee.findUnique({
@@ -109,50 +145,171 @@ export class PayrollRepository {
     cursor?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     status?: PayrollStatus;
+    search?: string;
+    from?: Date;
+    to?: Date;
   }) {
-    const where = {
+    const search = params.search?.trim();
+    const normalizedSearch = search?.toUpperCase();
+    const numericSearch =
+      search && /^-?\d+(\.\d+)?$/.test(search) ? Number(search) : undefined;
+    const integerSearch =
+      numericSearch !== undefined && Number.isInteger(numericSearch)
+        ? numericSearch
+        : undefined;
+    const dateRange = search ? buildDateRange(search) : undefined;
+    const searchFilters: Prisma.PayrollWhereInput[] = search
+      ? [
+          { id: { contains: search, mode: "insensitive" } },
+          { employeeId: { contains: search, mode: "insensitive" } },
+          { activePayrollKey: { contains: search, mode: "insensitive" } },
+          { recalculatedBy: { contains: search, mode: "insensitive" } },
+          {
+            recalculationReason: { contains: search, mode: "insensitive" },
+          },
+          { replacedPayrollId: { contains: search, mode: "insensitive" } },
+          { cancelledById: { contains: search, mode: "insensitive" } },
+          { cancelReason: { contains: search, mode: "insensitive" } },
+          {
+            employee: {
+              name: { contains: search, mode: "insensitive" },
+            },
+          },
+          {
+            employee: {
+              employeeCode: { contains: search, mode: "insensitive" },
+            },
+          },
+          {
+            employee: {
+              department: { contains: search, mode: "insensitive" },
+            },
+          },
+          {
+            employee: {
+              designation: { contains: search, mode: "insensitive" },
+            },
+          },
+          {
+            employee: {
+              phone: { contains: search },
+            },
+          },
+        ]
+      : [];
+
+    if (normalizedSearch === "MONTHLY" || normalizedSearch === "WEEKLY") {
+      searchFilters.push({ salaryType: normalizedSearch });
+    }
+
+    if (
+      normalizedSearch === "GENERATED" ||
+      normalizedSearch === "PAID" ||
+      normalizedSearch === "SUPERSEDED" ||
+      normalizedSearch === "CANCELLED"
+    ) {
+      searchFilters.push({ status: normalizedSearch });
+    }
+
+    if (normalizedSearch === "TRUE" || normalizedSearch === "FALSE") {
+      searchFilters.push({ isRecalculated: normalizedSearch === "TRUE" });
+    }
+
+    if (integerSearch !== undefined) {
+      searchFilters.push(
+        { version: integerSearch },
+        { totalDays: integerSearch },
+        { workingDays: integerSearch },
+      );
+    }
+
+    if (numericSearch !== undefined) {
+      searchFilters.push(
+        { grossSalary: numericSearch },
+        { standardSalary: numericSearch },
+        { otTotalHours: numericSearch },
+        { otHourlyRate: numericSearch },
+        { otEarnings: numericSearch },
+        { advanceDeduction: numericSearch },
+        { carryForwardApplied: numericSearch },
+        { totalDeduction: numericSearch },
+        { rawFinalSalary: numericSearch },
+        { carryForwardDeduction: numericSearch },
+        { finalSalary: numericSearch },
+        { presentDays: numericSearch },
+        { absentDays: numericSearch },
+        { halfDays: numericSearch },
+      );
+    }
+
+    if (dateRange) {
+      searchFilters.push(
+        { periodStart: dateRange },
+        { periodEnd: dateRange },
+        { recalculatedAt: dateRange },
+        { lockedAt: dateRange },
+        { cancelledAt: dateRange },
+        { createdAt: dateRange },
+        { updatedAt: dateRange },
+      );
+    }
+
+    const where: Prisma.PayrollWhereInput = {
       ...(params.employeeWhere && { employee: params.employeeWhere }),
       ...(params.status && { status: params.status }),
+      ...(params.from && {
+        periodStart: {
+          gte: params.from,
+        },
+      }),
+      ...(params.to && {
+        periodEnd: {
+          lte: params.to,
+        },
+      }),
+      ...(search && {
+        OR: searchFilters,
+      }),
     };
 
     return readPrisma.payroll.findMany({
-        where,
-        take: params.take,
-        ...(params.cursor
-          ? {
-              skip: 1,
-              cursor: { id: params.cursor },
-            }
-          : {}),
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          employeeId: true,
-          periodStart: true,
-          periodEnd: true,
-          salaryType: true,
-          grossSalary: true,
-          standardSalary: true,
-          otTotalHours: true,
-          otEarnings: true,
-          advanceDeduction: true,
-          finalSalary: true,
-          version: true,
-          status: true,
-          isRecalculated: true,
-          createdAt: true,
-          employee: {
-            select: {
-              id: true,
-              employeeCode: true,
-              name: true,
-              department: true,
-              designation: true,
-              salaryType: true,
-            },
+      where,
+      take: params.take,
+      ...(params.cursor
+        ? {
+            skip: 1,
+            cursor: { id: params.cursor },
+          }
+        : {}),
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        employeeId: true,
+        periodStart: true,
+        periodEnd: true,
+        salaryType: true,
+        grossSalary: true,
+        standardSalary: true,
+        otTotalHours: true,
+        otEarnings: true,
+        advanceDeduction: true,
+        finalSalary: true,
+        version: true,
+        status: true,
+        isRecalculated: true,
+        createdAt: true,
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            name: true,
+            department: true,
+            designation: true,
+            salaryType: true,
           },
         },
-      });
+      },
+    });
   }
 
   static findById(id: string) {
@@ -168,6 +325,7 @@ export class PayrollRepository {
             department: true,
             designation: true,
             salaryType: true,
+            joiningDate: true,
           },
         },
         payslips: true,

@@ -123,4 +123,37 @@ export class SchedulerController {
       next(error);
     }
   }
+
+  static async runItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = req.params.id;
+
+      if (!id || Array.isArray(id)) {
+        res.status(400).json({
+          success: false,
+          message: "Scheduler run id is required",
+        });
+        return;
+      }
+
+      const result = await SchedulerService.listRunItems(id, req.query);
+
+      if (!result) {
+        res.status(404).json({
+          success: false,
+          message: "Scheduler run not found",
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: "Scheduler run items fetched successfully",
+        data: result.data,
+        pagination: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

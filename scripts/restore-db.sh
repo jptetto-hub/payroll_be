@@ -13,6 +13,13 @@ if [ -z "$1" ]; then
 fi
 
 BACKUP_FILE=$1
+PG_RESTORE_URL=$(node -e '
+const url = new URL(process.env.DATABASE_URL);
+for (const key of ["schema", "connection_limit", "pool_timeout"]) {
+  url.searchParams.delete(key);
+}
+process.stdout.write(url.toString());
+')
 
 echo "Restoring database from $BACKUP_FILE..."
 
@@ -20,7 +27,7 @@ pg_restore \
   --clean \
   --if-exists \
   --no-owner \
-  --dbname "$DATABASE_URL" \
+  --dbname "$PG_RESTORE_URL" \
   "$BACKUP_FILE"
 
 echo "Restore completed."

@@ -92,12 +92,9 @@ const ensureAccessToEmployee = (
   }
 };
 
-const ensureAdvanceWithinSalaryLimit = async (params: {
+const ensureSalaryAvailableForAdvanceCycle = async (params: {
   employeeId: string;
   cycleStartDate: Date;
-  cycleEndDate: Date;
-  newAmount: number;
-  excludeAdvanceId?: string;
 }) => {
   const salary = await AdvanceRepository.getSalaryForDate(
     params.employeeId,
@@ -106,28 +103,7 @@ const ensureAdvanceWithinSalaryLimit = async (params: {
 
   if (!salary) {
     throw new Error(
-      "Cannot create advance because salary history is not available for selected deduction cycle",
-    );
-  }
-
-  const existingAdvances = await AdvanceRepository.getAdvancesForCycle(
-    params.employeeId,
-    params.cycleStartDate,
-    params.cycleEndDate,
-    params.excludeAdvanceId,
-  );
-
-  const existingAdvanceTotal = existingAdvances.reduce(
-    (sum, item) => sum + Number(item.remainingAmount),
-    0,
-  );
-
-  const salaryAmount = Number(salary.salaryAmount);
-  const availableAdvanceLimit = salaryAmount - existingAdvanceTotal;
-
-  if (params.newAmount > availableAdvanceLimit) {
-    throw new Error(
-      `Advance amount exceeds available salary balance for selected cycle. Salary: ${salaryAmount}, Existing advances: ${existingAdvanceTotal}, Available: ${availableAdvanceLimit}`,
+      "Cannot process advance because salary history is not available for selected deduction cycle",
     );
   }
 };
@@ -251,11 +227,9 @@ export class AdvanceService {
       cycleEndDate: cycle.cycleEndDate,
     });
 
-    await ensureAdvanceWithinSalaryLimit({
+    await ensureSalaryAvailableForAdvanceCycle({
       employeeId: employee.id,
       cycleStartDate: cycle.cycleStartDate,
-      cycleEndDate: cycle.cycleEndDate,
-      newAmount: data.amount,
     });
     const advance = await AdvanceRepository.create({
       employeeId: employee.id,
@@ -495,12 +469,9 @@ export class AdvanceService {
     if (data.note !== undefined) {
       updateData.note = data.note;
     }
-    await ensureAdvanceWithinSalaryLimit({
+    await ensureSalaryAvailableForAdvanceCycle({
       employeeId: advance.employeeId,
       cycleStartDate: cycle.cycleStartDate,
-      cycleEndDate: cycle.cycleEndDate,
-      newAmount: data.amount ?? Number(advance.amount),
-      excludeAdvanceId: advance.id,
     });
     const updatedAdvance = await AdvanceRepository.update(id, updateData);
 

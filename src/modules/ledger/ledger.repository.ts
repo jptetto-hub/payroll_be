@@ -53,6 +53,24 @@ export class LedgerRepository {
     });
   }
 
+  static createManyAndReturnTx(
+    tx: any,
+    data: {
+      employeeId: string;
+      payrollId?: string;
+      type: LedgerType;
+      referenceId?: string;
+      debit?: number;
+      credit?: number;
+      balance: number;
+      date: Date;
+    }[],
+  ) {
+    return tx.ledgerEntry.createManyAndReturn({
+      data,
+    });
+  }
+
   static listAll(params: {
     take: number;
     cursor?: string;

@@ -49,6 +49,24 @@ const ensureNotFutureDate = (date: Date) => {
   }
 };
 
+const isSunday = (date: Date) => date.getUTCDay() === 0;
+
+const hasOtInput = (input: AttendanceOtInput) =>
+  Number(input.otHours ?? 0) > 0 || Boolean(input.otStartTime && input.otEndTime);
+
+const ensureSundayAttendanceIsOtOnly = (
+  attendanceDate: Date,
+  input: AttendanceOtInput,
+) => {
+  if (!isSunday(attendanceDate)) {
+    return;
+  }
+
+  if (!hasOtInput(input)) {
+    throw new Error("Sunday attendance is skipped. Add OT hours only for Sunday.");
+  }
+};
+
 const ensureValidRange = (fromDate: Date, toDate: Date) => {
   if (fromDate > toDate) {
     throw new Error("From date cannot be greater than To date");
@@ -262,6 +280,7 @@ export class AttendanceService {
       action: "Attendance date",
     });
     await assertAttendanceNotLocked(data.employeeId, attendanceDate);
+    ensureSundayAttendanceIsOtOnly(attendanceDate, data);
 
     const existing = await AttendanceRepository.findByEmployeeAndDate(
       data.employeeId,
@@ -340,6 +359,7 @@ export class AttendanceService {
         action: `Attendance date for ${employee.employeeCode}`,
       });
       await assertAttendanceNotLocked(record.employeeId, attendanceDate);
+      ensureSundayAttendanceIsOtOnly(attendanceDate, record);
 
       const existing = await AttendanceRepository.findByEmployeeAndDate(
         record.employeeId,
@@ -485,6 +505,14 @@ export class AttendanceService {
     return {
       data,
       pagination: buildPaginationMeta(total, page, limit),
+      rangeSummary: {
+        from: formatDate(fromDate),
+        to: formatDate(toDate),
+        returnedRecords: data.length,
+        totalRecords: total,
+        page,
+        limit,
+      },
     };
   }
 
@@ -508,6 +536,23 @@ export class AttendanceService {
       action: "Attendance date",
     });
     await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
+    ensureSundayAttendanceIsOtOnly(attendance.date, {
+      checkInTime: hasOwn(data, "checkInTime")
+        ? data.checkInTime
+        : (attendance as any).checkInTime,
+      checkOutTime: hasOwn(data, "checkOutTime")
+        ? data.checkOutTime
+        : (attendance as any).checkOutTime,
+      otStartTime: hasOwn(data, "otStartTime")
+        ? data.otStartTime
+        : (attendance as any).otStartTime,
+      otEndTime: hasOwn(data, "otEndTime")
+        ? data.otEndTime
+        : (attendance as any).otEndTime,
+      otHours: hasOwn(data, "otHours") && data.otHours !== undefined
+        ? data.otHours
+        : Number((attendance as any).otHours ?? 0),
+    });
 
     return AttendanceRepository.update(id, {
       status: data.status,
@@ -592,6 +637,23 @@ export class AttendanceService {
         action: "Attendance date",
       });
       await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
+      ensureSundayAttendanceIsOtOnly(attendance.date, {
+        checkInTime: hasOwn(record, "checkInTime")
+          ? record.checkInTime
+          : (attendance as any).checkInTime,
+        checkOutTime: hasOwn(record, "checkOutTime")
+          ? record.checkOutTime
+          : (attendance as any).checkOutTime,
+        otStartTime: hasOwn(record, "otStartTime")
+          ? record.otStartTime
+          : (attendance as any).otStartTime,
+        otEndTime: hasOwn(record, "otEndTime")
+          ? record.otEndTime
+          : (attendance as any).otEndTime,
+        otHours: hasOwn(record, "otHours") && record.otHours !== undefined
+          ? record.otHours
+          : Number((attendance as any).otHours ?? 0),
+      });
 
       normalizedRecords.push({
         attendanceId: record.attendanceId,

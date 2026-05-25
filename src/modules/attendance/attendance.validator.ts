@@ -64,6 +64,8 @@ export const rangeQuerySchema = z.object({
   query: z.object({
     from: attendanceDateSchema,
     to: attendanceDateSchema,
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
   }),
 });
 

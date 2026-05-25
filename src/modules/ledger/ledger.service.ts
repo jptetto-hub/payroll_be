@@ -170,16 +170,7 @@ export class LedgerService {
       });
     }
 
-    await LedgerRepository.createManyTx(tx, entries);
-
-    return tx.ledgerEntry.findMany({
-      where: {
-        payrollId: params.payrollId,
-      },
-      orderBy: {
-        createdAt: "asc",
-      },
-    });
+    return LedgerRepository.createManyAndReturnTx(tx, entries);
   }
 
   static async createAdjustmentLedger(params: {

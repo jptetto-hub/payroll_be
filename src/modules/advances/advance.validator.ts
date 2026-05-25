@@ -9,7 +9,7 @@ const dateSchema = z
 const amountSchema = z.coerce
   .number("Amount must be a number")
   .positive("Amount must be greater than 0")
-  .max(1000000, "Amount cannot exceed salary type");
+  .max(1000000, "Amount cannot exceed 10,00,000");
 
 export const createAdvanceSchema = z.object({
   body: z.object({

@@ -9,6 +9,7 @@ import { CacheService } from "../../utils/cache";
 import { env } from "../../config/env";
 
 const EMPLOYEE_OPTIONS_CACHE_TTL = 60 * 5;
+const EMPLOYEE_OPTIONS_CACHE_PREFIX = "employee-options:v2";
 
 export class EmployeeService {
   static async createEmployee(data: any, currentUserRole: Role) {
@@ -86,7 +87,7 @@ export class EmployeeService {
       .replace(/\s+/g, " ");
     const limit = Math.min(Math.max(Number(query.limit || 20), 1), 50);
     const key = CacheService.buildKey(
-      "employee-options",
+      EMPLOYEE_OPTIONS_CACHE_PREFIX,
       search.toLowerCase() || "all",
       limit,
     );

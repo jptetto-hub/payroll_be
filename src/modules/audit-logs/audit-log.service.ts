@@ -28,6 +28,7 @@ export class AuditLogService {
     deviceInfo?: string | undefined;
     requestId?: string | undefined;
     sessionId?: string | undefined;
+    skipRelationValidation?: boolean | undefined;
   }) {
     return this.log(data);
   }
@@ -47,6 +48,7 @@ export class AuditLogService {
     deviceInfo?: string | undefined;
     requestId?: string | undefined;
     sessionId?: string | undefined;
+    skipRelationValidation?: boolean | undefined;
   }) {
     const context = getCurrentAuditMeta();
     const payload: {
@@ -121,7 +123,9 @@ export class AuditLogService {
       payload.sessionId = sessionId;
     }
 
-    return AuditLogRepository.create(payload);
+    return AuditLogRepository.create(payload, {
+      skipRelationValidation: data.skipRelationValidation,
+    });
   }
 
   static async list(query: any) {

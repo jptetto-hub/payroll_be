@@ -18,11 +18,11 @@ export class AuditLogRepository {
     deviceInfo?: string;
     requestId?: string;
     sessionId?: string;
-  }) {
+  }, options: { skipRelationValidation?: boolean } = {}) {
     let userId = data.userId;
     let employeeId = data.employeeId;
 
-    if (userId) {
+    if (userId && !options.skipRelationValidation) {
       const userExists = await prisma.employee.findUnique({
         where: { id: userId },
         select: { id: true },
@@ -33,7 +33,7 @@ export class AuditLogRepository {
       }
     }
 
-    if (employeeId) {
+    if (employeeId && !options.skipRelationValidation) {
       const employeeExists = await prisma.employee.findUnique({
         where: { id: employeeId },
         select: { id: true },

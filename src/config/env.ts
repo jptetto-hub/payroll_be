@@ -16,6 +16,8 @@ export const env = {
   readDatabaseUrl: process.env.READ_DATABASE_URL || process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET || "dev-only-secret",
   jwtExpiresIn,
+  authCookieName: process.env.AUTH_COOKIE_NAME || "payroll_session",
+  authIdleTimeoutSeconds: Number(process.env.AUTH_IDLE_TIMEOUT_SECONDS || 900),
   bcryptSaltRounds: Number(
     process.env.BCRYPT_ROUNDS || process.env.BCRYPT_SALT_ROUNDS || 10,
   ),

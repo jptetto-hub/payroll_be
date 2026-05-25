@@ -9,6 +9,11 @@ declare global {
         email?: string | null;
         role: Role;
       };
+      authSession?: {
+        id: string;
+        token: string;
+        source: "cookie" | "bearer";
+      };
     }
   }
 }

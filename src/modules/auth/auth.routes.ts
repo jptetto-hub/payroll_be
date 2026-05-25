@@ -13,4 +13,8 @@ router.post("/logout", authMiddleware, AuthController.logout);
 
 router.get("/me", authMiddleware, AuthController.me);
 
+router.post("/session/activity", authMiddleware, AuthController.activity);
+
+router.get("/session/status", authMiddleware, AuthController.sessionStatus);
+
 export default router;

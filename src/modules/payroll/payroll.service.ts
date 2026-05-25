@@ -21,7 +21,6 @@ import {
 } from "../../shared/utils/pagination.util";
 import {
   buildCursorPaginationMeta,
-  getCursorPagination,
 } from "../../shared/utils/cursor-pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { validateWeeklyPayrollCycle } from "../../shared/payroll/payrollCycle.utils";
@@ -41,6 +40,12 @@ const parseDateOnly = (value: string) => {
 };
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const addDays = (date: Date, days: number) => {
+  const copy = new Date(date);
+  copy.setUTCDate(copy.getUTCDate() + days);
+  return copy;
+};
 
 const ensureDateOnOrAfterJoining = (params: {
   date: Date;
@@ -63,6 +68,25 @@ const getMonthEnd = (date: Date) => {
 };
 
 const isSameDate = (a: Date, b: Date) => formatDate(a) === formatDate(b);
+
+const getAttendanceLockStart = (params: {
+  salaryType: SalaryType;
+  periodStart: Date;
+  joiningDate: Date;
+}) => {
+  if (
+    params.salaryType !== SalaryType.WEEKLY ||
+    params.periodStart.getUTCDay() !== 1
+  ) {
+    return params.periodStart;
+  }
+
+  const precedingSunday = addDays(params.periodStart, -1);
+
+  return precedingSunday >= params.joiningDate
+    ? precedingSunday
+    : params.periodStart;
+};
 
 const buildAdvanceBreakdown = (
   advanceSummary: any,
@@ -138,6 +162,136 @@ const settleAdvancesForPayroll = async (
 };
 
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+
+type SourceAdvanceSettlementSnapshot = {
+  carryForwardId: string;
+  advanceId: string;
+  appliedAmount: number;
+  previousRemainingAmount: number;
+  previousSettledAmount: number;
+  previousCarryForwardAmount: number;
+  previousSettlementStatus: AdvanceSettlementStatus;
+  previousIsSettled: boolean;
+};
+
+const settleAppliedCarryForwardAdvances = async (
+  tx: any,
+  employeeId: string,
+  appliedCarryForwards: any[],
+) => {
+  const sourceAdvanceSettlements: SourceAdvanceSettlementSnapshot[] = [];
+  const sourcePayrollIds = [
+    ...new Set(
+      appliedCarryForwards
+        .map((carryForward) => carryForward.sourcePayrollId)
+        .filter(Boolean),
+    ),
+  ];
+
+  if (sourcePayrollIds.length === 0) {
+    return sourceAdvanceSettlements;
+  }
+
+  const sourceAdvances = await tx.advancePayment.findMany({
+    where: {
+      employeeId,
+      lockedByPayrollId: {
+        in: sourcePayrollIds,
+      },
+      remainingAmount: {
+        gt: 0,
+      },
+    },
+    orderBy: {
+      date: "asc",
+    },
+  });
+  const sourceAdvancesByPayrollId = new Map<string, typeof sourceAdvances>();
+
+  for (const advance of sourceAdvances) {
+    const sourcePayrollId = advance.lockedByPayrollId;
+
+    if (!sourcePayrollId) {
+      continue;
+    }
+
+    const rows = sourceAdvancesByPayrollId.get(sourcePayrollId) ?? [];
+    rows.push(advance);
+    sourceAdvancesByPayrollId.set(sourcePayrollId, rows);
+  }
+
+  for (const carryForward of appliedCarryForwards) {
+    let amountToSettle = Number(carryForward.appliedAmount);
+
+    if (amountToSettle <= 0) {
+      continue;
+    }
+
+    for (const advance of sourceAdvancesByPayrollId.get(
+      carryForward.sourcePayrollId,
+    ) ?? []) {
+      if (amountToSettle <= 0) {
+        break;
+      }
+
+      const previousRemainingAmount = Number(advance.remainingAmount);
+      const appliedAmount = roundMoney(
+        Math.min(previousRemainingAmount, amountToSettle),
+      );
+      const newRemainingAmount = roundMoney(
+        previousRemainingAmount - appliedAmount,
+      );
+
+      await tx.advancePayment.update({
+        where: {
+          id: advance.id,
+        },
+        data: {
+          settledAmount: {
+            increment: appliedAmount,
+          },
+          remainingAmount: newRemainingAmount,
+          carryForwardAmount: newRemainingAmount,
+          isSettled: newRemainingAmount <= 0,
+          settlementStatus:
+            newRemainingAmount <= 0
+              ? AdvanceSettlementStatus.SETTLED
+              : AdvanceSettlementStatus.PARTIALLY_SETTLED,
+        },
+      });
+
+      sourceAdvanceSettlements.push({
+        carryForwardId: carryForward.id,
+        advanceId: advance.id,
+        appliedAmount,
+        previousRemainingAmount,
+        previousSettledAmount: Number(advance.settledAmount),
+        previousCarryForwardAmount: Number(advance.carryForwardAmount),
+        previousSettlementStatus: advance.settlementStatus,
+        previousIsSettled: advance.isSettled,
+      });
+
+      amountToSettle = roundMoney(amountToSettle - appliedAmount);
+    }
+  }
+
+  return sourceAdvanceSettlements;
+};
+
+const MAX_PAYROLL_LIST_LIMIT = 500;
+
+const getPayrollListCursorPagination = (query: any) => {
+  const rawLimit = Number(query.limit ?? 50);
+
+  if (!Number.isInteger(rawLimit) || rawLimit < 1) {
+    throw new AppError("limit must be a positive number", 400);
+  }
+
+  return {
+    limit: Math.min(rawLimit, MAX_PAYROLL_LIST_LIMIT),
+    cursor: query.cursor ? String(query.cursor) : undefined,
+  };
+};
 
 type AuditContext = {
   userId?: string | undefined;
@@ -222,44 +376,35 @@ export class PayrollService {
       periodEnd,
     });
 
-    const existingActivePayroll = await PayrollRepository.findByActivePayrollKey(
-      activePayrollKey,
-    );
+    const [existingActivePayroll, existingPeriodPayroll] = await Promise.all([
+      PayrollRepository.findByActivePayrollKey(activePayrollKey),
+      PayrollRepository.findActivePayroll(employee.id, periodStart, periodEnd),
+    ]);
     timer.checkpoint("duplicate payroll check");
 
-    if (existingActivePayroll) {
+    if (existingActivePayroll || existingPeriodPayroll) {
       throw new Error(
         "Active payroll already exists for this employee and period",
       );
     }
 
-    const existingPeriodPayroll = await PayrollRepository.findActivePayroll(
-      employee.id,
-      periodStart,
-      periodEnd,
-    );
-
-    if (existingPeriodPayroll) {
-      throw new Error(
-        "Active payroll already exists for this employee and period",
-      );
-    }
-
-    const preview = await SalaryCalculationService.preview({
-      employeeId: employee.id,
-      periodStart: data.periodStart,
-      periodEnd: data.periodEnd,
-    });
-    timer.checkpoint("salary calculation preview");
-
-    const latestVersion = await PayrollRepository.getLatestVersion(
-      employee.id,
-      periodStart,
-      periodEnd,
-    );
+    const [preview, latestVersion] = await Promise.all([
+      SalaryCalculationService.preview(
+        {
+          employeeId: employee.id,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
+        },
+        {
+          employee,
+          skipActivePayrollSnapshot: true,
+        },
+      ),
+      PayrollRepository.getLatestVersion(employee.id, periodStart, periodEnd),
+    ]);
+    timer.checkpoint("salary calculation preview and payroll version fetch");
 
     const version = latestVersion ? latestVersion.version + 1 : 1;
-    timer.checkpoint("latest payroll version fetch");
 
     const advanceBreakdown = buildAdvanceBreakdown(
       preview.advanceSummary,
@@ -318,12 +463,17 @@ export class PayrollService {
             },
           },
         });
+        const attendanceLockStart = getAttendanceLockStart({
+          salaryType: employee.salaryType,
+          periodStart: payroll.periodStart,
+          joiningDate: employee.joiningDate,
+        });
 
         await tx.attendance.updateMany({
           where: {
             employeeId: employee.id,
             date: {
-              gte: payroll.periodStart,
+              gte: attendanceLockStart,
               lte: payroll.periodEnd,
             },
           },
@@ -350,6 +500,13 @@ export class PayrollService {
           preview,
           payroll.id,
         );
+
+        const sourceAdvanceSettlements =
+          await settleAppliedCarryForwardAdvances(
+            tx,
+            employee.id,
+            preview.carryForwardSummary.appliedCarryForwards,
+          );
 
         for (const item of preview.carryForwardSummary.appliedCarryForwards) {
           const newRemaining = roundMoney(
@@ -383,13 +540,37 @@ export class PayrollService {
               })
             : null;
 
+        if (sourceAdvanceSettlements.length > 0) {
+          await tx.payroll.update({
+            where: {
+              id: payroll.id,
+            },
+            data: {
+              advanceBreakdown: {
+                ...advanceBreakdown,
+                carryForwardApplied: {
+                  ...preview.carryForwardSummary,
+                  sourceAdvanceSettlements,
+                },
+              },
+            },
+          });
+        }
+
+        const deductionAppliedThisCycle = roundMoney(
+          Math.min(
+            Number(payroll.grossSalary),
+            Number(payroll.advanceDeduction),
+          ) + Number(payroll.carryForwardApplied),
+        );
+
         const ledgerEntries = await LedgerService.createPayrollLedgerTx(tx, {
           employeeId: payroll.employeeId,
           payrollId: payroll.id,
           grossSalary: Number(payroll.grossSalary),
           standardSalary: Number((payroll as any).standardSalary),
           otEarnings: Number((payroll as any).otEarnings),
-          advanceDeduction: Number(payroll.advanceDeduction),
+          advanceDeduction: deductionAppliedThisCycle,
           date: payroll.periodEnd,
         });
 
@@ -445,7 +626,7 @@ export class PayrollService {
     timer.checkpoint("payslip handling");
 
     if (auditContext?.userId) {
-      await AuditLogService.create({
+      const auditWrites = [AuditLogService.create({
         userId: auditContext.userId,
         action: AuditAction.PAYROLL_GENERATE,
         module: "PAYROLL",
@@ -467,10 +648,11 @@ export class PayrollService {
           status: payroll.status,
         },
         ipAddress: auditContext.ipAddress,
-      });
+        skipRelationValidation: true,
+      })];
 
       if (carryForward) {
-        await AuditLogService.create({
+        auditWrites.push(AuditLogService.create({
           userId: auditContext.userId,
           action: AuditAction.CREATE,
           module: "PAYROLL",
@@ -484,11 +666,14 @@ export class PayrollService {
             status: carryForward.status,
           },
           ipAddress: auditContext.ipAddress,
-        });
+          skipRelationValidation: true,
+        }));
       }
+
+      await Promise.all(auditWrites);
     }
     timer.checkpoint("audit logging");
-    await CacheService.delByPattern("dashboard-summary:*");
+    void CacheService.delByPattern("dashboard-summary:*");
     timer.end();
 
     return {
@@ -501,17 +686,22 @@ export class PayrollService {
   }
 
   static async list(query: any, authUser: { id: string; role: Role }) {
-    const { limit, cursor } = getCursorPagination(query);
+    const { limit, cursor } = getPayrollListCursorPagination(query);
     const { employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
+    const from = query.from ? parseDateOnly(String(query.from)) : undefined;
+    const to = query.to ? parseDateOnly(String(query.to)) : undefined;
 
     const payrolls = await PayrollRepository.list({
       take: limit + 1,
       ...(cursor && { cursor }),
       employeeWhere,
       status: query.status,
+      search: query.search ? String(query.search) : undefined,
+      from,
+      to,
     });
 
     return buildCursorPaginationMeta(payrolls, limit);
@@ -600,6 +790,8 @@ export class PayrollService {
       });
       const appliedCarryForwards =
         advanceBreakdown?.carryForwardApplied?.appliedCarryForwards ?? [];
+      const sourceAdvanceSettlements =
+        advanceBreakdown?.carryForwardApplied?.sourceAdvanceSettlements ?? [];
       const reversedAdvances = [];
 
       for (const advance of advancesToReverse) {
@@ -629,6 +821,21 @@ export class PayrollService {
           data: {
             remainingAmount: item.remainingAmount,
             status: item.previousStatus ?? CarryForwardStatus.PENDING,
+          },
+        });
+      }
+
+      for (const sourceSettlement of sourceAdvanceSettlements) {
+        await tx.advancePayment.update({
+          where: {
+            id: sourceSettlement.advanceId,
+          },
+          data: {
+            remainingAmount: sourceSettlement.previousRemainingAmount,
+            settledAmount: sourceSettlement.previousSettledAmount,
+            carryForwardAmount: sourceSettlement.previousCarryForwardAmount,
+            settlementStatus: sourceSettlement.previousSettlementStatus,
+            isSettled: sourceSettlement.previousIsSettled,
           },
         });
       }
@@ -858,7 +1065,11 @@ export class PayrollService {
       where: {
         employeeId: oldPayroll.employeeId,
         date: {
-          gte: oldPayroll.periodStart,
+          gte: getAttendanceLockStart({
+            salaryType: oldPayroll.salaryType,
+            periodStart: oldPayroll.periodStart,
+            joiningDate: oldPayroll.employee.joiningDate,
+          }),
           lte: oldPayroll.periodEnd,
         },
       },

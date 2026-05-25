@@ -435,6 +435,43 @@ export class SchedulerRepository {
     ]);
   }
 
+  static listRunItems(params: {
+    runId: string;
+    skip: number;
+    take: number;
+    status?: SchedulerRunItemStatus;
+  }) {
+    const where = {
+      runId: params.runId,
+      ...(params.status && { status: params.status }),
+    };
+
+    return Promise.all([
+      prisma.schedulerRunItem.findMany({
+        where,
+        skip: params.skip,
+        take: params.take,
+        orderBy: {
+          createdAt: "desc",
+        },
+        select: {
+          id: true,
+          runId: true,
+          employeeId: true,
+          employeeCode: true,
+          periodStart: true,
+          periodEnd: true,
+          status: true,
+          payrollId: true,
+          reason: true,
+          errorMessage: true,
+          createdAt: true,
+        },
+      }),
+      prisma.schedulerRunItem.count({ where }),
+    ]);
+  }
+
   static findRunById(id: string) {
     return prisma.schedulerRun.findUnique({
       where: { id },
