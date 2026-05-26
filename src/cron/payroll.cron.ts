@@ -1,76 +1,118 @@
 import cron from "node-cron";
-import { SchedulerRunStatus } from "@prisma/client";
+import { SalaryType, SchedulerRunStatus } from "@prisma/client";
 import { SchedulerRepository } from "../modules/scheduler/scheduler.repository";
+import { SchedulerService } from "../modules/scheduler/scheduler.service";
 import { payrollSchedulerQueue } from "../jobs/payrollScheduler.queue";
 import { logger } from "../config/logger";
 
+const CRON_TIMEZONE = process.env.PAYROLL_CRON_TIMEZONE || "Asia/Kolkata";
+
+function getDueSalaryTypes(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: CRON_TIMEZONE,
+    weekday: "short",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  const weekday = read("weekday");
+  const year = Number(read("year"));
+  const month = Number(read("month"));
+  const day = Number(read("day"));
+  const lastDayOfMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const salaryTypes: SalaryType[] = [];
+
+  if (weekday === "Sat") {
+    salaryTypes.push(SalaryType.WEEKLY);
+  }
+
+  if (day === lastDayOfMonth) {
+    salaryTypes.push(SalaryType.MONTHLY);
+  }
+
+  return salaryTypes;
+}
+
 export const startPayrollCron = async () => {
-  let setting;
+  cron.schedule(
+    "59 23 * * *",
+    async () => {
+      try {
+        const salaryTypes = getDueSalaryTypes();
 
-  try {
-    setting = await SchedulerRepository.getSystemSetting();
-  } catch (error) {
-    logger.error(
-      { error },
-      "Payroll scheduler startup check failed. Worker will continue without scheduling payroll cron.",
-    );
-    return;
-  }
+        if (salaryTypes.length === 0) {
+          return;
+        }
 
-  if (setting && !setting.autoPayrollEnabled) {
-    logger.info("Payroll scheduler skipped: autoPayrollEnabled is false");
-    return;
-  }
+        const setting = await SchedulerRepository.getSystemSetting();
 
-  cron.schedule("0 1 * * *", async () => {
-    try {
-      logger.info("Payroll cron triggered");
+        if (setting && !setting.autoPayrollEnabled) {
+          logger.info(
+            { salaryTypes },
+            "Payroll cron skipped: autoPayrollEnabled is false",
+          );
+          return;
+        }
 
-      const existingManualRun = await SchedulerRepository.findActiveRunByName(
-        "MANUAL_PAYROLL_SCHEDULER",
-      );
-      const existingCronRun = await SchedulerRepository.findActiveRunByName(
-        "CRON_PAYROLL_SCHEDULER",
-      );
+        await SchedulerService.recoverStaleRuns();
 
-      if (existingManualRun || existingCronRun) {
-        logger.warn(
-          {
-            existingManualRun,
-            existingCronRun,
-          },
-          "Payroll cron skipped because scheduler is already running",
+        const existingManualRun =
+          await SchedulerRepository.findActiveRunByName(
+            "MANUAL_PAYROLL_SCHEDULER",
+          );
+        const existingCronRun = await SchedulerRepository.findActiveRunByName(
+          "CRON_PAYROLL_SCHEDULER",
         );
-        return;
+
+        if (existingManualRun || existingCronRun) {
+          logger.warn(
+            { existingManualRun, existingCronRun, salaryTypes },
+            "Payroll cron skipped because scheduler is already running",
+          );
+          return;
+        }
+
+        const run = await SchedulerRepository.createRun({
+          name: "CRON_PAYROLL_SCHEDULER",
+          status: SchedulerRunStatus.PENDING,
+          metadata: {
+            triggeredBy: "CRON",
+            triggeredAt: new Date().toISOString(),
+            mode: "BACKGROUND",
+            salaryTypes,
+            periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
+          },
+        });
+
+        await payrollSchedulerQueue.add(
+          "manual-payroll-run",
+          {
+            runId: run.id,
+            triggeredBy: undefined,
+            triggeredByType: "CRON",
+            salaryTypes,
+          },
+          {
+            attempts: 1,
+            removeOnComplete: false,
+            removeOnFail: false,
+          },
+        );
+
+        logger.info({ runId: run.id, salaryTypes }, "Payroll cron job queued");
+      } catch (error) {
+        logger.error({ error }, "Payroll cron failed to enqueue job");
       }
+    },
+    {
+      timezone: CRON_TIMEZONE,
+    },
+  );
 
-      const run = await SchedulerRepository.createRun({
-        name: "CRON_PAYROLL_SCHEDULER",
-        status: SchedulerRunStatus.PENDING,
-        metadata: {
-          triggeredBy: "CRON",
-          triggeredAt: new Date().toISOString(),
-          mode: "BACKGROUND",
-        },
-      });
-
-      await payrollSchedulerQueue.add(
-        "manual-payroll-run",
-        {
-          runId: run.id,
-          triggeredBy: undefined,
-          triggeredByType: "CRON",
-        },
-        {
-          attempts: 1,
-          removeOnComplete: false,
-          removeOnFail: false,
-        },
-      );
-
-      logger.info({ runId: run.id }, "Payroll cron job queued");
-    } catch (error) {
-      logger.error({ error }, "Payroll cron failed to enqueue job");
-    }
-  });
+  logger.info(
+    { timezone: CRON_TIMEZONE },
+    "Payroll cron scheduled for Saturday and month-end at 11:59 PM",
+  );
 };

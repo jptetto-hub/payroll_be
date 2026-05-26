@@ -8,6 +8,8 @@ import { payrollSchedulerQueue } from "../../jobs/payrollScheduler.queue";
 export class SchedulerController {
   static async runPayroll(req: Request, res: Response, next: NextFunction) {
     try {
+      await SchedulerService.recoverStaleRuns();
+
       const existingManualRun = await SchedulerRepository.findActiveRunByName(
         "MANUAL_PAYROLL_SCHEDULER",
       );

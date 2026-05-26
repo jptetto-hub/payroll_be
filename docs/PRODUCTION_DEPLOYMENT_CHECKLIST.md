@@ -48,9 +48,17 @@ For Supabase Free Tier, keep:
 
 ```bash
 SCHEDULER_BATCH_SIZE=50
+SCHEDULER_EMPLOYEE_CONCURRENCY=1
+SCHEDULER_STORE_ITEM_DETAILS=false
 PAYROLL_WORKER_CONCURRENCY=1
 PAYSLIP_WORKER_CONCURRENCY=1
 ```
+
+On larger dedicated PostgreSQL capacity, tune `SCHEDULER_BATCH_SIZE` and
+`SCHEDULER_EMPLOYEE_CONCURRENCY` upward in stages. Keep
+`SCHEDULER_STORE_ITEM_DETAILS=false` for very large payroll cycles so run
+history stores failures/skips for investigation without writing one detail row
+for every successful payroll.
 
 ## Health Checks
 

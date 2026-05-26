@@ -49,6 +49,16 @@ export const cycleQuerySchema = z.object({
   }),
 });
 
+export const advanceDeductionPreviewSchema = z.object({
+  body: z.object({
+    employeeId: z.string().uuid("Valid employeeId is required"),
+    amount: amountSchema,
+    date: dateSchema,
+    deductionCycleStartDate: dateSchema,
+    excludeAdvanceId: z.string().uuid().optional(),
+  }),
+});
+
 export const deleteAdvanceSchema = z.object({
   body: z.object({
     reason: z.string().min(5, "Delete reason is required").max(250),

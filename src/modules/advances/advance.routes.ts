@@ -5,6 +5,7 @@ import { authMiddleware } from "../../middlewares/auth.middleware";
 import { allowRoles } from "../../middlewares/rbac.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import {
+  advanceDeductionPreviewSchema,
   createAdvanceSchema,
   cycleQuerySchema,
   deleteAdvanceSchema,
@@ -20,6 +21,13 @@ router.post(
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   validate(createAdvanceSchema),
   AdvanceController.create,
+);
+
+router.post(
+  "/deduction-preview",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  validate(advanceDeductionPreviewSchema),
+  AdvanceController.deductionPreview,
 );
 
 router.get(

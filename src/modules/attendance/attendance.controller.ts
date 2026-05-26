@@ -71,6 +71,7 @@ export class AttendanceController {
           conflicts: result.conflicts,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.status(201).json({
         success: true,
@@ -209,6 +210,7 @@ export class AttendanceController {
           records: result,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,

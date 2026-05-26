@@ -28,6 +28,8 @@ Use conservative values:
 ```bash
 SCHEDULER_BATCH_SIZE=50
 SCHEDULER_MAX_RESULT_ITEMS=500
+SCHEDULER_EMPLOYEE_CONCURRENCY=1
+SCHEDULER_STORE_ITEM_DETAILS=true
 
 PAYROLL_WORKER_CONCURRENCY=1
 PAYROLL_WORKER_RATE_LIMIT_MAX=1
@@ -49,6 +51,26 @@ Keep `DATABASE_URL` bounded:
 ```bash
 ?schema=public&connection_limit=5&pool_timeout=30
 ```
+
+For a dedicated production database, increase scheduler throughput gradually
+after observing pool usage and transaction times:
+
+```bash
+SCHEDULER_BATCH_SIZE=500
+SCHEDULER_EMPLOYEE_CONCURRENCY=5
+# Raise to 10 only after successful load tests and adequate DB connections.
+SCHEDULER_STORE_ITEM_DETAILS=false
+```
+
+For local/testing, `SCHEDULER_STORE_ITEM_DETAILS=true` lets the UI list
+generated and already-handled employees for a run. For very large production
+cycles, set it to `false`; counts remain visible and failed/actionable detail
+rows are still stored without creating one tracking row per successful or
+already-handled employee.
+
+The scheduler queries only employees without a payroll record for the latest
+completed cycle. Cancelled or recalculated cycle records are left for manual
+payroll actions; failed attempts that wrote no payroll remain retryable.
 
 ## k6 Test Order
 

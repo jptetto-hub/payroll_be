@@ -12,6 +12,7 @@ export const payrollSchedulerWorker = new Worker(
         job.data.runId,
         job.data.triggeredBy,
         job.data.triggeredByType,
+        job.data.salaryTypes,
       );
     }
 

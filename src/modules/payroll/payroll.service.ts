@@ -501,20 +501,26 @@ export class PayrollService {
           payroll.id,
         );
 
-        const sourceAdvanceSettlements =
-          await settleAppliedCarryForwardAdvances(
-            tx,
-            employee.id,
-            preview.carryForwardSummary.appliedCarryForwards,
-          );
-
         for (const item of preview.carryForwardSummary.appliedCarryForwards) {
           const newRemaining = roundMoney(
             item.remainingAmount - item.appliedAmount,
           );
 
-          await tx.payrollCarryForward.update({
-            where: { id: item.id },
+          const applied = await tx.payrollCarryForward.updateMany({
+            where: {
+              id: item.id,
+              employeeId: employee.id,
+              cycleEndDate: {
+                lt: payroll.periodStart,
+              },
+              remainingAmount: item.remainingAmount,
+              status: {
+                in: [
+                  CarryForwardStatus.PENDING,
+                  CarryForwardStatus.PARTIALLY_DEDUCTED,
+                ],
+              },
+            },
             data: {
               remainingAmount: newRemaining,
               status:
@@ -523,7 +529,21 @@ export class PayrollService {
                   : CarryForwardStatus.PARTIALLY_DEDUCTED,
             },
           });
+
+          if (applied.count !== 1) {
+            throw new AppError(
+              "Carry-forward balance changed while generating payroll. Refresh the payroll preview and generate again.",
+              409,
+            );
+          }
         }
+
+        const sourceAdvanceSettlements =
+          await settleAppliedCarryForwardAdvances(
+            tx,
+            employee.id,
+            preview.carryForwardSummary.appliedCarryForwards,
+          );
 
         const carryForward =
           preview.result.carryForwardDeduction > 0
@@ -765,6 +785,30 @@ export class PayrollService {
 
     if (payroll.status !== PayrollStatus.GENERATED) {
       throw new AppError("Only GENERATED payroll can be cancelled", 400);
+    }
+
+    const appliedLaterCarryForward =
+      await prisma.payrollCarryForward.findFirst({
+        where: {
+          sourcePayrollId: payroll.id,
+          status: {
+            in: [
+              CarryForwardStatus.PARTIALLY_DEDUCTED,
+              CarryForwardStatus.DEDUCTED,
+            ],
+          },
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+    if (appliedLaterCarryForward) {
+      throw new AppError(
+        "This payroll created a carry-forward balance that has already been applied to a later payroll. Cancel the later payroll first, then cancel this payroll.",
+        400,
+      );
     }
 
     const result = await prisma.$transaction(async (tx) => {

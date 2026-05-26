@@ -112,6 +112,31 @@ export class SalaryCalculationRepository {
     });
   }
 
+  static getUnprocessedEarlierAdvances(employeeId: string, periodStart: Date) {
+    return prisma.advancePayment.findMany({
+      where: {
+        employeeId,
+        cycleEndDate: {
+          lt: periodStart,
+        },
+        isSettled: false,
+        remainingAmount: {
+          gt: 0,
+        },
+        lockedByPayrollId: null,
+      },
+      select: {
+        id: true,
+        cycleStartDate: true,
+        cycleEndDate: true,
+        remainingAmount: true,
+      },
+      orderBy: {
+        cycleStartDate: "asc",
+      },
+    });
+  }
+
   static async getAdvancesWithCancelledPayrollSnapshot(
     employeeId: string,
     periodStart: Date,

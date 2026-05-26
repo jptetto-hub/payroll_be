@@ -1,4 +1,4 @@
-import { SchedulerRunStatus } from "@prisma/client";
+import { SalaryType, SchedulerRunStatus } from "@prisma/client";
 import { prisma } from "../config/prisma";
 import { DashboardSummaryService } from "../modules/dashboard/dashboard-summary.service";
 import { SchedulerService } from "../modules/scheduler/scheduler.service";
@@ -8,6 +8,7 @@ export class PayrollSchedulerProcessor {
     runId: string,
     triggeredBy?: string,
     triggeredByType: "CRON" | "MANUAL" = "MANUAL",
+    salaryTypes?: SalaryType[],
   ) {
     await prisma.schedulerRun.update({
       where: { id: runId },
@@ -22,6 +23,7 @@ export class PayrollSchedulerProcessor {
         runId,
         triggeredByUserId: triggeredBy,
         mode: "BACKGROUND",
+        salaryTypes,
       });
 
       try {

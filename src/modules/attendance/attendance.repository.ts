@@ -1,5 +1,5 @@
 import { prisma, readPrisma } from "../../config/prisma";
-import { AttendanceStatus, Prisma } from "@prisma/client";
+import { AttendanceStatus, PayrollStatus, Prisma } from "@prisma/client";
 
 const stripUndefined = (data: Record<string, any>): Record<string, any> =>
   Object.fromEntries(
@@ -10,6 +10,25 @@ export class AttendanceRepository {
   static findEmployee(employeeId: string) {
     return prisma.employee.findUnique({
       where: { id: employeeId },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        role: true,
+        status: true,
+        salaryType: true,
+        joiningDate: true,
+      },
+    });
+  }
+
+  static findEmployeesByIds(employeeIds: string[]) {
+    return prisma.employee.findMany({
+      where: {
+        id: {
+          in: employeeIds,
+        },
+      },
       select: {
         id: true,
         employeeCode: true,
@@ -51,6 +70,69 @@ export class AttendanceRepository {
     });
   }
 
+  static findByEmployeeAndDates(
+    records: { employeeId: string; date: Date }[],
+  ) {
+    return prisma.attendance.findMany({
+      where: {
+        OR: records.map((record) => ({
+          employeeId: record.employeeId,
+          date: record.date,
+        })),
+      },
+    });
+  }
+
+  static findManyByIdsForWrite(attendanceIds: string[]) {
+    return prisma.attendance.findMany({
+      where: {
+        id: {
+          in: attendanceIds,
+        },
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            name: true,
+            role: true,
+            status: true,
+            joiningDate: true,
+          },
+        },
+      },
+    });
+  }
+
+  static findActivePayrollLocks(params: {
+    employeeIds: string[];
+    minDate: Date;
+    maxDate: Date;
+  }) {
+    return prisma.payroll.findMany({
+      where: {
+        employeeId: {
+          in: params.employeeIds,
+        },
+        status: {
+          in: [PayrollStatus.GENERATED, PayrollStatus.PAID],
+        },
+        periodStart: {
+          lte: params.maxDate,
+        },
+        periodEnd: {
+          gte: params.minDate,
+        },
+      },
+      select: {
+        employeeId: true,
+        periodStart: true,
+        periodEnd: true,
+      },
+    });
+  }
+
   static create(data: {
     employeeId: string;
     date: Date;
@@ -66,6 +148,26 @@ export class AttendanceRepository {
   }) {
     return prisma.attendance.create({
       data,
+    });
+  }
+
+  static createMany(
+    records: {
+      employeeId: string;
+      date: Date;
+      status: AttendanceStatus;
+      checkInTime?: Date | null;
+      checkOutTime?: Date | null;
+      otStartTime?: Date | null;
+      otEndTime?: Date | null;
+      otHours?: number;
+      otManualOverride?: boolean;
+      otOverrideReason?: string | null;
+      otBreakdown?: any;
+    }[],
+  ) {
+    return prisma.attendance.createManyAndReturn({
+      data: records,
     });
   }
 
@@ -344,24 +446,55 @@ export class AttendanceRepository {
       otBreakdown?: any;
     }[],
   ) {
-    return prisma.$transaction(
-      records.map((record) =>
-        prisma.attendance.update({
-          where: { id: record.attendanceId },
-          data: stripUndefined({
-            status: record.status,
-            checkInTime: record.checkInTime,
-            checkOutTime: record.checkOutTime,
-            otStartTime: record.otStartTime,
-            otEndTime: record.otEndTime,
-            otHours: record.otHours,
-            otManualOverride: record.otManualOverride,
-            otOverrideReason: record.otOverrideReason,
-            otBreakdown: record.otBreakdown,
-          }),
-        }),
-      ),
+    if (records.length === 0) {
+      return [];
+    }
+
+    const rows = records.map(
+      (record) => Prisma.sql`(
+        ${record.attendanceId}::text,
+        ${record.status}::"AttendanceStatus",
+        ${record.checkInTime ?? null}::timestamp,
+        ${record.checkOutTime ?? null}::timestamp,
+        ${record.otStartTime ?? null}::timestamp,
+        ${record.otEndTime ?? null}::timestamp,
+        ${record.otHours ?? 0}::numeric,
+        ${record.otManualOverride ?? false}::boolean,
+        ${record.otOverrideReason ?? null}::text,
+        ${JSON.stringify(record.otBreakdown ?? null)}::jsonb
+      )`,
     );
+
+    return prisma.$queryRaw<any[]>`
+      UPDATE "Attendance" AS attendance
+      SET
+        status = incoming.status,
+        "checkInTime" = incoming."checkInTime",
+        "checkOutTime" = incoming."checkOutTime",
+        "otStartTime" = incoming."otStartTime",
+        "otEndTime" = incoming."otEndTime",
+        "otHours" = incoming."otHours",
+        "otManualOverride" = incoming."otManualOverride",
+        "otOverrideReason" = incoming."otOverrideReason",
+        "otBreakdown" = incoming."otBreakdown",
+        "updatedAt" = CURRENT_TIMESTAMP
+      FROM (
+        VALUES ${Prisma.join(rows)}
+      ) AS incoming (
+        id,
+        status,
+        "checkInTime",
+        "checkOutTime",
+        "otStartTime",
+        "otEndTime",
+        "otHours",
+        "otManualOverride",
+        "otOverrideReason",
+        "otBreakdown"
+      )
+      WHERE attendance.id = incoming.id
+      RETURNING attendance.*
+    `;
   }
 
   static deleteMany(attendanceIds: string[]) {

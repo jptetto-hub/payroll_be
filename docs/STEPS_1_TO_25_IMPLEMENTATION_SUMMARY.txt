@@ -84,17 +84,21 @@ Problem:
 Scheduler was loading all active employees at once.
 
 Change:
-Scheduler now processes active employees in batches.
+Scheduler now processes current-cycle pending employees in batches.
+Employees with any payroll record for the target cycle are excluded directly
+in the database, so scheduler reruns do not stream already handled payrolls.
 
 Default:
 SCHEDULER_BATCH_SIZE=50 for Supabase Free Tier.
 
 Production later:
 SCHEDULER_BATCH_SIZE=500 after DB upgrade/testing.
+SCHEDULER_EMPLOYEE_CONCURRENCY=5, increased only after load testing.
 
 Repository methods added:
 countActiveEmployees()
-getActiveEmployeesBatch()
+countPendingActiveEmployees()
+getPendingActiveEmployeesBatch()
 
 Result:
 Memory pressure reduced.
@@ -108,19 +112,21 @@ For each employee, scheduler queried salary history and latest payroll separatel
 
 Change:
 Scheduler now preloads data per batch:
-1. First salary histories for all employees in batch.
-2. Latest payrolls for all employees in batch.
+1. First salary history only for each pending employee using SQL DISTINCT ON.
+2. Current-cycle handled employees are removed by the pending-candidate query.
 
 Added methods:
 getFirstSalaryHistories(employeeIds)
-getLatestPayrolls(employeeIds)
+countPendingActiveEmployees(targetPeriods)
+getPendingActiveEmployeesBatch(targetPeriods)
 
 Result:
 Before:
 100 employees = 100 salary queries + 100 latest payroll queries.
 
 After:
-100 employees = 1 salary query + 1 latest payroll query.
+One first-salary query per pending batch; completed current-cycle employees
+are not loaded into Node.js during reruns.
 
 
 STEP 5 - OPTIMIZE EXISTING PAYROLL DUPLICATE CHECK
@@ -129,14 +135,13 @@ Problem:
 Scheduler called findPayroll() inside every employee-period loop.
 
 Change:
-Existing payrolls are preloaded per batch into a Map.
-
-Added methods:
-getExistingPayrollsForBatch()
-getPayrollPeriodKey()
+The database selects only employees who have no payroll record for the latest
+completed target cycle. This intentionally excludes cancelled/recalculated
+periods from automatic recreation; those remain manual actions.
 
 Result:
-Duplicate checks are done from memory instead of repeated DB queries.
+Repeat/recovery scheduler runs operate only on unresolved current-cycle work.
+PayrollService DB idempotency still protects parallel race conditions.
 
 
 STEP 6 - OPTIMIZE PAYROLL CALCULATION INTERNALS
@@ -316,6 +321,9 @@ Ledger entries use createMany where safe.
 Ledger creation can run inside payroll transaction.
 SchedulerRunItem uses createMany per batch.
 Scheduler progress updates once per batch, not per employee.
+Successful SchedulerRunItem detail writes can be disabled with
+SCHEDULER_STORE_ITEM_DETAILS=false; summary counts remain available while
+failures/skips remain queryable.
 
 Important:
 No huge transaction for 1 lakh employees.
@@ -330,6 +338,9 @@ Avoid overwhelming Supabase Free Tier or small DB.
 Env defaults:
 SCHEDULER_BATCH_SIZE=50
 SCHEDULER_MAX_RESULT_ITEMS=500
+SCHEDULER_EMPLOYEE_CONCURRENCY=1
+SCHEDULER_STORE_ITEM_DETAILS=true for local/testing visibility
+SCHEDULER_STORE_ITEM_DETAILS=false for high-volume production
 PAYROLL_WORKER_CONCURRENCY=1
 PAYROLL_WORKER_RATE_LIMIT_MAX=1
 PAYROLL_WORKER_RATE_LIMIT_DURATION=1000

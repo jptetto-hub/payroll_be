@@ -11,6 +11,7 @@ import {
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAttendanceNotLocked } from "../../shared/payroll/payroll-lock.util";
 import { OvertimeService } from "../../services/overtime.service";
+import { AppError } from "../../shared/utils/app-error";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -113,24 +114,29 @@ const parseOptionalDateTime = (value?: string | Date | null) => {
 const buildAttendancePayload = async (
   attendanceDate: Date,
   input: AttendanceOtInput,
+  settings?: any[],
 ) => {
   const checkInTime = parseOptionalDateTime(input.checkInTime);
   const checkOutTime = parseOptionalDateTime(input.checkOutTime);
   const otStartTime = parseOptionalDateTime(input.otStartTime);
   const otEndTime = parseOptionalDateTime(input.otEndTime);
-    const ot = await OvertimeService.calculateForAttendance({
-      attendanceDate,
-      checkInTime,
-      checkOutTime,
-      otStartTime,
-      otEndTime,
-      ...(input.otHours !== undefined && { otHours: input.otHours }),
-      ...(input.otManualOverride !== undefined && {
-        otManualOverride: input.otManualOverride,
-      }),
-      ...(input.otOverrideReason !== undefined && {
-        otOverrideReason: input.otOverrideReason,
-      }),
+  const setting = settings
+    ? OvertimeService.resolveSettingFromList(settings, attendanceDate)
+    : undefined;
+  const ot = await OvertimeService.calculateForAttendance({
+    attendanceDate,
+    checkInTime,
+    checkOutTime,
+    otStartTime,
+    otEndTime,
+    ...(input.otHours !== undefined && { otHours: input.otHours }),
+    ...(input.otManualOverride !== undefined && {
+      otManualOverride: input.otManualOverride,
+    }),
+    ...(input.otOverrideReason !== undefined && {
+      otOverrideReason: input.otOverrideReason,
+    }),
+    ...(setting && { setting }),
   });
 
   return {
@@ -142,6 +148,38 @@ const buildAttendancePayload = async (
 
 const hasOwn = (value: object, key: string) =>
   Object.prototype.hasOwnProperty.call(value, key);
+
+const attendanceKey = (employeeId: string, date: Date) =>
+  `${employeeId}_${formatDate(date)}`;
+
+const getDateBounds = (dates: Date[]) => ({
+  minDate: new Date(Math.min(...dates.map((date) => date.getTime()))),
+  maxDate: new Date(Math.max(...dates.map((date) => date.getTime()))),
+});
+
+const assertNotLockedFromPreloadedPayrolls = (
+  employeeId: string,
+  date: Date,
+  payrolls: {
+    employeeId: string;
+    periodStart: Date;
+    periodEnd: Date;
+  }[],
+) => {
+  const locked = payrolls.some(
+    (payroll) =>
+      payroll.employeeId === employeeId &&
+      payroll.periodStart <= date &&
+      payroll.periodEnd >= date,
+  );
+
+  if (locked) {
+    throw new AppError(
+      "Attendance is locked because payroll is already generated for this period. Cancel or recalculate payroll before editing.",
+      400,
+    );
+  }
+};
 
 const getOrdinalDay = (day: number) => {
   if (day > 3 && day < 21) return `${day}th`;
@@ -310,12 +348,11 @@ export class AttendanceService {
     currentUserRole: Role,
   ) {
     const seen = new Set<string>();
-    const normalizedRecords: {
+    const normalizedInput: {
       employeeId: string;
       attendanceDate: Date;
       status: AttendanceStatus;
-      hasExistingAttendance: boolean;
-      otPayload: Awaited<ReturnType<typeof buildAttendancePayload>>;
+      input: AttendanceOtInput;
     }[] = [];
     const existingDatesByEmployee = new Map<
       string,
@@ -332,12 +369,47 @@ export class AttendanceService {
       }
 
       seen.add(key);
+      normalizedInput.push({
+        employeeId: record.employeeId,
+        attendanceDate: normalizeDate(record.date),
+        status: record.status,
+        input: record,
+      });
     }
 
-    for (const record of records) {
-      const employee = await AttendanceRepository.findEmployee(
-        record.employeeId,
-      );
+    const employeeIds = [
+      ...new Set(normalizedInput.map((item) => item.employeeId)),
+    ];
+    const { minDate, maxDate } = getDateBounds(
+      normalizedInput.map((item) => item.attendanceDate),
+    );
+    const [employees, existingAttendances, activePayrolls] = await Promise.all([
+      AttendanceRepository.findEmployeesByIds(employeeIds),
+      AttendanceRepository.findByEmployeeAndDates(
+        normalizedInput.map((item) => ({
+          employeeId: item.employeeId,
+          date: item.attendanceDate,
+        })),
+      ),
+      AttendanceRepository.findActivePayrollLocks({
+        employeeIds,
+        minDate,
+        maxDate,
+      }),
+    ]);
+    const employeeMap = new Map(
+      employees.map((employee) => [employee.id, employee]),
+    );
+    const existingMap = new Map(
+      existingAttendances.map((attendance) => [
+        attendanceKey(attendance.employeeId, attendance.date),
+        attendance,
+      ]),
+    );
+    const recordsToCreate: typeof normalizedInput = [];
+
+    for (const record of normalizedInput) {
+      const employee = employeeMap.get(record.employeeId);
 
       if (!employee) {
         throw new Error(`Employee not found: ${record.employeeId}`);
@@ -351,19 +423,22 @@ export class AttendanceService {
 
       ensureAllowedEmployeeAccess(employee.role, currentUserRole);
 
-      const attendanceDate = normalizeDate(record.date);
+      const attendanceDate = record.attendanceDate;
       ensureNotFutureDate(attendanceDate);
       ensureDateOnOrAfterJoining({
         date: attendanceDate,
         joiningDate: employee.joiningDate,
         action: `Attendance date for ${employee.employeeCode}`,
       });
-      await assertAttendanceNotLocked(record.employeeId, attendanceDate);
-      ensureSundayAttendanceIsOtOnly(attendanceDate, record);
-
-      const existing = await AttendanceRepository.findByEmployeeAndDate(
+      assertNotLockedFromPreloadedPayrolls(
         record.employeeId,
         attendanceDate,
+        activePayrolls,
+      );
+      ensureSundayAttendanceIsOtOnly(attendanceDate, record.input);
+
+      const existing = existingMap.get(
+        attendanceKey(record.employeeId, attendanceDate),
       );
 
       if (existing) {
@@ -377,31 +452,31 @@ export class AttendanceService {
             dates: [attendanceDate],
           });
         }
+      } else {
+        recordsToCreate.push(record);
       }
-
-      normalizedRecords.push({
-        employeeId: record.employeeId,
-        attendanceDate,
-        status: record.status,
-        hasExistingAttendance: Boolean(existing),
-        otPayload: await buildAttendancePayload(attendanceDate, record),
-      });
     }
 
-    const results = [];
-
-    for (const record of normalizedRecords.filter(
-      (item) => !item.hasExistingAttendance,
-    )) {
-      const saved = await AttendanceRepository.create({
+    const settings =
+      recordsToCreate.length > 0
+        ? await OvertimeService.getSettingsForDateRange(minDate, maxDate)
+        : [];
+    const createPayloads = await Promise.all(
+      recordsToCreate.map(async (record) => ({
         employeeId: record.employeeId,
         date: record.attendanceDate,
         status: record.status,
-        ...record.otPayload,
-      });
-
-      results.push(saved);
-    }
+        ...(await buildAttendancePayload(
+          record.attendanceDate,
+          record.input,
+          settings,
+        )),
+      })),
+    );
+    const results =
+      createPayloads.length > 0
+        ? await AttendanceRepository.createMany(createPayloads)
+        : [];
 
     const conflicts = [...existingDatesByEmployee.values()].map(
       (item) => `${item.employeeCode}: ${formatDateRanges(item.dates)}`,
@@ -413,7 +488,7 @@ export class AttendanceService {
 
     return {
       createdCount: results.length,
-      skippedCount: normalizedRecords.length - results.length,
+      skippedCount: normalizedInput.length - results.length,
       records: results,
       conflictMessage,
       conflicts,
@@ -620,14 +695,37 @@ export class AttendanceService {
       }
 
       seen.add(record.attendanceId);
+    }
 
-      const attendance = await AttendanceRepository.findById(
-        record.attendanceId,
-      );
+    const attendanceIds = records.map((record) => record.attendanceId);
+    const attendances =
+      await AttendanceRepository.findManyByIdsForWrite(attendanceIds);
+    const attendanceMap = new Map(
+      attendances.map((attendance) => [attendance.id, attendance]),
+    );
+    const missingId = attendanceIds.find((id) => !attendanceMap.has(id));
 
-      if (!attendance) {
-        throw new Error(`Attendance record not found: ${record.attendanceId}`);
-      }
+    if (missingId) {
+      throw new Error(`Attendance record not found: ${missingId}`);
+    }
+
+    const { minDate, maxDate } = getDateBounds(
+      attendances.map((attendance) => attendance.date),
+    );
+    const employeeIds = [
+      ...new Set(attendances.map((attendance) => attendance.employeeId)),
+    ];
+    const [activePayrolls, settings] = await Promise.all([
+      AttendanceRepository.findActivePayrollLocks({
+        employeeIds,
+        minDate,
+        maxDate,
+      }),
+      OvertimeService.getSettingsForDateRange(minDate, maxDate),
+    ]);
+
+    for (const record of records) {
+      const attendance = attendanceMap.get(record.attendanceId)!;
 
       ensureAllowedEmployeeAccess(attendance.employee.role, currentUserRole);
       ensureNotFutureDate(attendance.date);
@@ -636,7 +734,11 @@ export class AttendanceService {
         joiningDate: attendance.employee.joiningDate,
         action: "Attendance date",
       });
-      await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
+      assertNotLockedFromPreloadedPayrolls(
+        attendance.employeeId,
+        attendance.date,
+        activePayrolls,
+      );
       ensureSundayAttendanceIsOtOnly(attendance.date, {
         checkInTime: hasOwn(record, "checkInTime")
           ? record.checkInTime
@@ -658,31 +760,35 @@ export class AttendanceService {
       normalizedRecords.push({
         attendanceId: record.attendanceId,
         status: record.status,
-        ...(await buildAttendancePayload(attendance.date, {
-          checkInTime: hasOwn(record, "checkInTime")
-            ? record.checkInTime
-            : (attendance as any).checkInTime,
-          checkOutTime: hasOwn(record, "checkOutTime")
-            ? record.checkOutTime
-            : (attendance as any).checkOutTime,
-          otStartTime: hasOwn(record, "otStartTime")
-            ? record.otStartTime
-            : (attendance as any).otStartTime,
-          otEndTime: hasOwn(record, "otEndTime")
-            ? record.otEndTime
-            : (attendance as any).otEndTime,
-          otHours: hasOwn(record, "otHours") && record.otHours !== undefined
-            ? record.otHours
-            : Number((attendance as any).otHours ?? 0),
-          otManualOverride:
-            record.otManualOverride ??
-            (attendance as any).otManualOverride ??
-            false,
-          otOverrideReason:
-            hasOwn(record, "otOverrideReason")
-              ? record.otOverrideReason
-              : (attendance as any).otOverrideReason ?? null,
-        })),
+        ...(await buildAttendancePayload(
+          attendance.date,
+          {
+            checkInTime: hasOwn(record, "checkInTime")
+              ? record.checkInTime
+              : (attendance as any).checkInTime,
+            checkOutTime: hasOwn(record, "checkOutTime")
+              ? record.checkOutTime
+              : (attendance as any).checkOutTime,
+            otStartTime: hasOwn(record, "otStartTime")
+              ? record.otStartTime
+              : (attendance as any).otStartTime,
+            otEndTime: hasOwn(record, "otEndTime")
+              ? record.otEndTime
+              : (attendance as any).otEndTime,
+            otHours: hasOwn(record, "otHours") && record.otHours !== undefined
+              ? record.otHours
+              : Number((attendance as any).otHours ?? 0),
+            otManualOverride:
+              record.otManualOverride ??
+              (attendance as any).otManualOverride ??
+              false,
+            otOverrideReason:
+              hasOwn(record, "otOverrideReason")
+                ? record.otOverrideReason
+                : (attendance as any).otOverrideReason ?? null,
+          },
+          settings,
+        )),
       });
     }
 

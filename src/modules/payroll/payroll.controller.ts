@@ -21,7 +21,7 @@ export class PayrollController {
       res.status(201).json({
         success: true,
         message: result.carryForward
-          ? "Payroll generated successfully with carry-forward deduction"
+          ? "Payroll generated successfully with balance carried to the next payroll cycle"
           : "Payroll generated successfully",
         data: result,
       });

@@ -20,6 +20,7 @@ const parseDateOnly = (value: string) => {
 };
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 
 const ensureDateOnOrAfterJoining = (params: {
   date: Date;
@@ -174,6 +175,222 @@ const calculateCycle = (params: {
 };
 
 export class AdvanceService {
+  static async deductionPreview(
+    data: {
+      employeeId: string;
+      amount: number;
+      date: string;
+      deductionCycleStartDate: string;
+      excludeAdvanceId?: string;
+    },
+    currentUserRole: Role,
+  ) {
+    const employee = await AdvanceRepository.findEmployee(data.employeeId);
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    ensureAccessToEmployee(employee.role, currentUserRole);
+
+    const advanceDate = parseDateOnly(data.date);
+    const deductionCycleStartDate = parseDateOnly(data.deductionCycleStartDate);
+
+    ensureNotFutureDate(advanceDate);
+    ensureDateOnOrAfterJoining({
+      date: advanceDate,
+      joiningDate: employee.joiningDate,
+      action: "Advance date",
+    });
+
+    const setting = await AdvanceRepository.getSystemSetting();
+    const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
+    const cycle = calculateCycle({
+      salaryType: employee.salaryType,
+      advanceDate,
+      deductionCycleStartDate,
+      weekStartsOn,
+    });
+
+    ensureDateOnOrAfterJoining({
+      date: cycle.cycleStartDate,
+      joiningDate: employee.joiningDate,
+      action: "Advance deduction cycle start",
+    });
+
+    await assertAdvanceCycleNotLocked({
+      employeeId: employee.id,
+      cycleStartDate: cycle.cycleStartDate,
+      cycleEndDate: cycle.cycleEndDate,
+    });
+
+    const [
+      salary,
+      existingAdvances,
+      pendingCarryForwards,
+      unprocessedEarlierAdvances,
+    ] = await Promise.all([
+      AdvanceRepository.getSalaryForDate(employee.id, cycle.cycleStartDate),
+      AdvanceRepository.getAdvancesForCycle(
+        employee.id,
+        cycle.cycleStartDate,
+        cycle.cycleEndDate,
+        data.excludeAdvanceId,
+      ),
+      AdvanceRepository.getPendingCarryForwardsBeforeCycle(
+        employee.id,
+        cycle.cycleStartDate,
+      ),
+      AdvanceRepository.getUnprocessedEarlierAdvances(
+        employee.id,
+        cycle.cycleStartDate,
+      ),
+    ]);
+
+    if (!salary) {
+      throw new Error(
+        "Cannot preview advance because salary history is not available for selected deduction cycle",
+      );
+    }
+
+    const referenceSalary = roundMoney(Number(salary.salaryAmount));
+    const existingAdvanceTotal = roundMoney(
+      existingAdvances.reduce(
+        (total, advance) => total + Number(advance.remainingAmount),
+        0,
+      ),
+    );
+    const requestedAdvance = roundMoney(data.amount);
+    const selectedCycleAdvanceTotal = roundMoney(
+      existingAdvanceTotal + requestedAdvance,
+    );
+    let availableAfterCycleAdvances = Math.max(
+      roundMoney(referenceSalary - selectedCycleAdvanceTotal),
+      0,
+    );
+    const projectedCarryForwardApplications: {
+      id: string;
+      sourcePayrollId: string;
+      sourceCycleStartDate: string;
+      sourceCycleEndDate: string;
+      remainingAmount: number;
+      appliedAmount: number;
+      remainingAfterApplication: number;
+    }[] = [];
+
+    for (const item of pendingCarryForwards) {
+      const remainingAmount = roundMoney(Number(item.remainingAmount));
+      const appliedAmount = roundMoney(
+        Math.min(remainingAmount, availableAfterCycleAdvances),
+      );
+
+      projectedCarryForwardApplications.push({
+        id: item.id,
+        sourcePayrollId: item.sourcePayrollId,
+        sourceCycleStartDate: formatDate(item.cycleStartDate),
+        sourceCycleEndDate: formatDate(item.cycleEndDate),
+        remainingAmount,
+        appliedAmount,
+        remainingAfterApplication: roundMoney(remainingAmount - appliedAmount),
+      });
+
+      availableAfterCycleAdvances = roundMoney(
+        availableAfterCycleAdvances - appliedAmount,
+      );
+    }
+
+    const earlierBalanceAvailable = roundMoney(
+      pendingCarryForwards.reduce(
+        (total, item) => total + Number(item.remainingAmount),
+        0,
+      ),
+    );
+    const earlierBalanceApplied = roundMoney(
+      projectedCarryForwardApplications.reduce(
+        (total, item) => total + item.appliedAmount,
+        0,
+      ),
+    );
+    const earlierBalanceRemaining = roundMoney(
+      earlierBalanceAvailable - earlierBalanceApplied,
+    );
+    const selectedCycleOverflow = Math.max(
+      roundMoney(selectedCycleAdvanceTotal - referenceSalary),
+      0,
+    );
+    const projectedTotalDeduction = roundMoney(
+      selectedCycleAdvanceTotal + earlierBalanceApplied,
+    );
+    const projectedPayableSalary = Math.max(
+      roundMoney(referenceSalary - projectedTotalDeduction),
+      0,
+    );
+    const projectedBalanceCarriedOnward = roundMoney(
+      selectedCycleOverflow + earlierBalanceRemaining,
+    );
+    const now = new Date();
+    const today = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const attendanceState =
+      cycle.cycleStartDate > today
+        ? "FUTURE_CYCLE"
+        : cycle.cycleEndDate >= today
+          ? "CURRENT_CYCLE"
+          : "PAST_CYCLE";
+    const unprocessedEarlierCycles = [
+      ...new Map(
+        unprocessedEarlierAdvances.map((advance) => {
+          const cycleKey = `${formatDate(advance.cycleStartDate)}_${formatDate(
+            advance.cycleEndDate,
+          )}`;
+
+          return [
+            cycleKey,
+            {
+              startDate: formatDate(advance.cycleStartDate),
+              endDate: formatDate(advance.cycleEndDate),
+            },
+          ];
+        }),
+      ).values(),
+    ];
+
+    return {
+      employee: {
+        id: employee.id,
+        employeeCode: employee.employeeCode,
+        name: employee.name,
+        salaryType: employee.salaryType,
+      },
+      cycle: {
+        startDate: formatDate(cycle.cycleStartDate),
+        endDate: formatDate(cycle.cycleEndDate),
+        attendanceState,
+      },
+      referenceSalary,
+      existingAdvances: existingAdvances.map((advance) => ({
+        id: advance.id,
+        date: formatDate(advance.date),
+        remainingAmount: Number(advance.remainingAmount),
+      })),
+      existingAdvanceTotal,
+      requestedAdvance,
+      selectedCycleAdvanceTotal,
+      pendingCarryForwards: projectedCarryForwardApplications,
+      earlierBalanceAvailable,
+      earlierBalanceApplied,
+      earlierBalanceRemaining,
+      projectedTotalDeduction,
+      projectedPayableSalary,
+      selectedCycleOverflow,
+      projectedBalanceCarriedOnward,
+      unprocessedEarlierCycles,
+      requiresEarlierPayrollProcessing: unprocessedEarlierCycles.length > 0,
+      isProjection: true,
+    };
+  }
+
   static async createAdvance(
     data: {
       employeeId: string;

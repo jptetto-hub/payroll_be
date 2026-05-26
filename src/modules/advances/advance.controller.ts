@@ -16,6 +16,27 @@ type CycleQuery = {
 };
 
 export class AdvanceController {
+  static async deductionPreview(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const result = await AdvanceService.deductionPreview(
+        req.body,
+        req.user.role,
+      );
+
+      res.json({
+        success: true,
+        message: "Advance deduction preview generated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async create(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await AdvanceService.createAdvance(

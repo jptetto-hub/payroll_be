@@ -21,9 +21,7 @@ export class PayrollCarryForwardRepository {
           gt: 0,
         },
       },
-      orderBy: {
-        createdAt: "asc",
-      },
+      orderBy: [{ cycleEndDate: "asc" }, { createdAt: "asc" }],
     });
   }
 }

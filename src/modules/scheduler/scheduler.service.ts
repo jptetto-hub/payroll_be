@@ -1,5 +1,4 @@
 import {
-  PayrollStatus,
   SalaryType,
   SchedulerRunItemStatus,
   SchedulerRunStatus,
@@ -12,8 +11,27 @@ import {
   getPagination,
 } from "../../shared/utils/pagination.util";
 import { PerformanceTimer } from "../../utils/performanceTimer";
+import { logger } from "../../config/logger";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+
+async function processWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  processor: (item: T) => Promise<void>,
+) {
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex++];
+        await processor(item);
+      }
+    }),
+  );
+}
 
 const addDays = (date: Date, days: number) => {
   const copy = new Date(date);
@@ -56,62 +74,69 @@ const todayUtc = () => {
   );
 };
 
-const isSameDate = (a: Date, b: Date) => formatDate(a) === formatDate(b);
-
 type SchedulerRunOptions = {
   runId?: string;
   triggeredByUserId?: string | undefined;
   mode?: "HTTP" | "BACKGROUND" | "CRON";
+  salaryTypes?: SalaryType[];
 };
 
-const getNextPeriod = (
+const getLatestCompletedPeriod = (
   salaryType: SalaryType,
-  previousPeriodEnd: Date,
+  currentDate: Date,
   weekStartsOn: WeekStartsOn,
 ) => {
   if (salaryType === SalaryType.MONTHLY) {
-    const nextMonthStart = startOfMonth(addMonths(previousPeriodEnd, 1));
+    let periodStart = startOfMonth(currentDate);
+    let periodEnd = endOfMonth(periodStart);
+
+    if (periodEnd > currentDate) {
+      periodStart = addMonths(periodStart, -1);
+      periodEnd = endOfMonth(periodStart);
+    }
 
     return {
-      periodStart: nextMonthStart,
-      periodEnd: endOfMonth(nextMonthStart),
+      periodStart,
+      periodEnd,
     };
   }
 
-  const nextWeekStart = getWeekStart(
-    addDays(previousPeriodEnd, 1),
-    weekStartsOn,
-  );
+  let periodStart = getWeekStart(currentDate, weekStartsOn);
+  let periodEnd = getWeeklyEndSaturday(periodStart);
 
-  return {
-    periodStart: nextWeekStart,
-    periodEnd: getWeeklyEndSaturday(nextWeekStart),
-  };
-};
-
-const getFirstEligiblePeriod = (
-  salaryType: SalaryType,
-  baseDate: Date,
-  weekStartsOn: WeekStartsOn,
-) => {
-  if (salaryType === SalaryType.MONTHLY) {
-    const monthStart = startOfMonth(baseDate);
-
-    return {
-      periodStart: monthStart,
-      periodEnd: endOfMonth(monthStart),
-    };
+  if (periodEnd > currentDate) {
+    periodStart = addDays(periodStart, -7);
+    periodEnd = getWeeklyEndSaturday(periodStart);
   }
 
-  const weekStart = getWeekStart(baseDate, weekStartsOn);
-
   return {
-    periodStart: weekStart,
-    periodEnd: getWeeklyEndSaturday(weekStart),
+    periodStart,
+    periodEnd,
   };
 };
 
 export class SchedulerService {
+  static async recoverStaleRuns() {
+    const staleMinutes = Number(
+      process.env.SCHEDULER_STALE_RUN_MINUTES || 60,
+    );
+    const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
+    const message = `Marked failed automatically because the scheduler recorded no progress for ${staleMinutes} minutes. Start a new run to retry the current payroll cycle.`;
+    const result = await SchedulerRepository.markStaleActiveRunsFailed({
+      staleBefore,
+      errorMessage: message,
+    });
+
+    if (result.count > 0) {
+      logger.warn(
+        { count: result.count, staleMinutes },
+        "Recovered stale payroll scheduler runs",
+      );
+    }
+
+    return result.count;
+  }
+
   static async runPayrollScheduler(
     triggeredBy: "CRON" | "MANUAL" = "CRON",
     options: SchedulerRunOptions = {},
@@ -121,6 +146,12 @@ export class SchedulerService {
 
     const startedAt = new Date();
     const BATCH_SIZE = Number(process.env.SCHEDULER_BATCH_SIZE || 100);
+    const EMPLOYEE_CONCURRENCY = Number(
+      process.env.SCHEDULER_EMPLOYEE_CONCURRENCY || 1,
+    );
+    const STORE_ITEM_DETAILS =
+      process.env.SCHEDULER_STORE_ITEM_DETAILS === "true" ||
+      process.env.SCHEDULER_STORE_SUCCESS_ITEMS === "true";
     const MAX_RESULT_ITEMS = Number(
       process.env.SCHEDULER_MAX_RESULT_ITEMS || 1000,
     );
@@ -140,12 +171,21 @@ export class SchedulerService {
             triggeredBy,
             triggeredByUserId: options.triggeredByUserId,
             mode: options.mode ?? triggeredBy,
+            salaryTypes: options.salaryTypes,
+            periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
             startedAt,
           },
         });
 
     const result = {
       triggeredBy,
+      salaryTypes: options.salaryTypes ?? [SalaryType.MONTHLY, SalaryType.WEEKLY],
+      periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
+      employeeConcurrency: EMPLOYEE_CONCURRENCY,
+      storesItemDetails: STORE_ITEM_DETAILS,
+      storesSuccessItemDetails: STORE_ITEM_DETAILS,
+      pendingEmployeeCount: 0,
+      currentCycleAlreadyHandledCount: 0,
       totalEmployees: 0,
       processedEmployees: 0,
       successCount: 0,
@@ -157,7 +197,9 @@ export class SchedulerService {
     };
 
     try {
-      result.totalEmployees = await SchedulerRepository.countActiveEmployees();
+      result.totalEmployees = await SchedulerRepository.countActiveEmployees(
+        options.salaryTypes,
+      );
       timer.checkpoint("active employee count");
 
       await SchedulerRepository.updateRun(run.id, {
@@ -168,6 +210,8 @@ export class SchedulerService {
           triggeredBy,
           triggeredByUserId: options.triggeredByUserId,
           mode: options.mode ?? triggeredBy,
+          salaryTypes: options.salaryTypes,
+          periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
           startedAt,
         },
       });
@@ -178,13 +222,93 @@ export class SchedulerService {
       timer.checkpoint("system setting fetch");
 
       const currentDate = todayUtc();
+      const targetPeriods = new Map(
+        (options.salaryTypes?.length
+          ? options.salaryTypes
+          : [SalaryType.MONTHLY, SalaryType.WEEKLY]
+        ).map((salaryType) => [
+          salaryType,
+          getLatestCompletedPeriod(salaryType, currentDate, weekStartsOn),
+        ]),
+      );
+      const targetPeriodList = Array.from(targetPeriods.entries()).map(
+        ([salaryType, period]) => ({
+          salaryType,
+          ...period,
+        }),
+      );
+      const pendingEmployees =
+        await SchedulerRepository.countPendingActiveEmployees(targetPeriodList);
+
+      result.pendingEmployeeCount = pendingEmployees;
+      result.currentCycleAlreadyHandledCount =
+        result.totalEmployees - pendingEmployees;
+      result.processedEmployees = result.currentCycleAlreadyHandledCount;
+      result.skippedCount = result.currentCycleAlreadyHandledCount;
+
+      await SchedulerRepository.updateRun(run.id, {
+        processedEmployees: result.processedEmployees,
+        skippedCount: result.skippedCount,
+      });
+      timer.checkpoint("current-cycle pending employee count");
+
+      if (
+        STORE_ITEM_DETAILS &&
+        result.currentCycleAlreadyHandledCount > 0
+      ) {
+        let handledCursor: string | undefined;
+
+        while (true) {
+          const handledEmployees =
+            await SchedulerRepository.getHandledActiveEmployeesBatch({
+              take: BATCH_SIZE,
+              ...(handledCursor ? { cursor: handledCursor } : {}),
+              targetPeriods: targetPeriodList,
+            });
+
+          if (handledEmployees.length === 0) {
+            break;
+          }
+
+          await SchedulerRepository.createRunItems(
+            handledEmployees.map((employee) => {
+              const period = targetPeriods.get(employee.salaryType)!;
+              const payroll = employee.payrolls.find(
+                (item) =>
+                  formatDate(item.periodStart) ===
+                    formatDate(period.periodStart) &&
+                  formatDate(item.periodEnd) === formatDate(period.periodEnd),
+              );
+
+              return {
+                runId: run.id,
+                employeeId: employee.id,
+                employeeCode: employee.employeeCode,
+                periodStart: period.periodStart,
+                periodEnd: period.periodEnd,
+                status: SchedulerRunItemStatus.SKIPPED,
+                reason: payroll
+                  ? `Current payroll cycle already handled (${payroll.status})`
+                  : "Current payroll cycle already handled",
+                payrollId: payroll?.id,
+              };
+            }),
+          );
+
+          handledCursor = handledEmployees[handledEmployees.length - 1]?.id;
+        }
+
+        timer.checkpoint("handled employee detail rows stored");
+      }
 
       let cursor: string | undefined;
 
       while (true) {
-        const employees = await SchedulerRepository.getActiveEmployeesBatch({
+        const employees =
+          await SchedulerRepository.getPendingActiveEmployeesBatch({
           take: BATCH_SIZE,
           ...(cursor ? { cursor } : {}),
+          targetPeriods: targetPeriodList,
         });
         timer.checkpoint("employee batch fetch");
 
@@ -195,13 +319,6 @@ export class SchedulerService {
         const employeeIds = employees.map((employee) => employee.id);
         const firstSalaryMap =
           await SchedulerRepository.getFirstSalaryHistories(employeeIds);
-        const latestPayrollMap =
-          await SchedulerRepository.getLatestPayrolls(employeeIds);
-        const existingPayrollMap =
-          await SchedulerRepository.getExistingPayrollsForBatch({
-            employeeIds,
-            maxPeriodEnd: currentDate,
-          });
         const schedulerItemsToCreate: {
           runId: string;
           employeeId?: string;
@@ -215,7 +332,10 @@ export class SchedulerService {
         }[] = [];
         timer.checkpoint("batch preload");
 
-        for (const employee of employees) {
+        await processWithConcurrency(
+          employees,
+          EMPLOYEE_CONCURRENCY,
+          async (employee) => {
           try {
             const firstSalary = firstSalaryMap.get(employee.id);
 
@@ -233,169 +353,98 @@ export class SchedulerService {
                 status: SchedulerRunItemStatus.SKIPPED,
                 reason: "No salary history found",
               });
-              continue;
+              return;
             }
 
-            const latestPayroll = latestPayrollMap.get(employee.id);
+            const currentPeriod = targetPeriods.get(employee.salaryType)!;
 
-            let nextPeriod;
-
-            if (latestPayroll) {
-              nextPeriod = getNextPeriod(
-                employee.salaryType,
-                latestPayroll.periodEnd,
-                weekStartsOn,
-              );
-            } else {
-              const baseDate =
-                employee.joiningDate > firstSalary.effectiveFrom
-                  ? employee.joiningDate
-                  : firstSalary.effectiveFrom;
-
-              nextPeriod = getFirstEligiblePeriod(
-                employee.salaryType,
-                baseDate,
-                weekStartsOn,
-              );
-            }
-
-            while (nextPeriod.periodEnd < currentDate) {
-              if (employee.joiningDate > nextPeriod.periodEnd) {
-                result.skippedCount++;
-                addResultItem(result.skipped, {
-                  employeeId: employee.id,
-                  employeeCode: employee.employeeCode,
-                  periodStart: formatDate(nextPeriod.periodStart),
-                  periodEnd: formatDate(nextPeriod.periodEnd),
-                  reason: "Employee joined after this period",
-                });
-                schedulerItemsToCreate.push({
-                  runId: run.id,
-                  employeeId: employee.id,
-                  employeeCode: employee.employeeCode,
-                  periodStart: nextPeriod.periodStart,
-                  periodEnd: nextPeriod.periodEnd,
-                  status: SchedulerRunItemStatus.SKIPPED,
-                  reason: "Employee joined after this period",
-                });
-
-                nextPeriod = getNextPeriod(
-                  employee.salaryType,
-                  nextPeriod.periodEnd,
-                  weekStartsOn,
-                );
-
-                continue;
-              }
-
-              const payrollKey = SchedulerRepository.getPayrollPeriodKey(
-                employee.id,
-                nextPeriod.periodStart,
-                nextPeriod.periodEnd,
-              );
-
-              const existingPayroll = existingPayrollMap.get(payrollKey);
-
-              if (existingPayroll) {
-                result.skippedCount++;
-                addResultItem(result.skipped, {
-                  employeeId: employee.id,
-                  employeeCode: employee.employeeCode,
-                  periodStart: formatDate(nextPeriod.periodStart),
-                  periodEnd: formatDate(nextPeriod.periodEnd),
-                  reason: "Payroll already exists",
-                });
-                schedulerItemsToCreate.push({
-                  runId: run.id,
-                  employeeId: employee.id,
-                  employeeCode: employee.employeeCode,
-                  periodStart: nextPeriod.periodStart,
-                  periodEnd: nextPeriod.periodEnd,
-                  status: SchedulerRunItemStatus.SKIPPED,
-                  reason: "Payroll already exists",
-                });
-
-                nextPeriod = getNextPeriod(
-                  employee.salaryType,
-                  nextPeriod.periodEnd,
-                  weekStartsOn,
-                );
-
-                continue;
-              }
-
-              const payroll = await PayrollService.generate(
-                {
-                  employeeId: employee.id,
-                  periodStart: formatDate(nextPeriod.periodStart),
-                  periodEnd: formatDate(nextPeriod.periodEnd),
-                  createPayslip: false,
-                },
-                "SUPER_ADMIN" as any,
-              );
-
-              const payrollResult = payroll as any;
-              const generatedPayrollId =
-                payrollResult?.payroll?.id ?? payrollResult?.id;
-              const generatedPayrollVersion =
-                payrollResult?.payroll?.version ?? payrollResult?.version ?? 1;
-
-              if (!generatedPayrollId) {
-                throw new Error("Payroll generation did not return payroll id");
-              }
-
-              existingPayrollMap.set(payrollKey, {
-                id: generatedPayrollId,
-                employeeId: employee.id,
-                periodStart: nextPeriod.periodStart,
-                periodEnd: nextPeriod.periodEnd,
-                status: PayrollStatus.GENERATED,
-                version: generatedPayrollVersion,
-              });
-
-              result.successCount++;
-              addResultItem(result.generated, {
-                employeeId: employee.id,
-                employeeCode: employee.employeeCode,
-                periodStart: formatDate(nextPeriod.periodStart),
-                periodEnd: formatDate(nextPeriod.periodEnd),
-                payrollId: generatedPayrollId,
-              });
-              schedulerItemsToCreate.push({
-                runId: run.id,
-                employeeId: employee.id,
-                employeeCode: employee.employeeCode,
-                periodStart: nextPeriod.periodStart,
-                periodEnd: nextPeriod.periodEnd,
-                status: SchedulerRunItemStatus.SUCCESS,
-                payrollId: generatedPayrollId,
-              });
-
-              nextPeriod = getNextPeriod(
-                employee.salaryType,
-                nextPeriod.periodEnd,
-                weekStartsOn,
-              );
-            }
-
-            if (!latestPayroll && nextPeriod.periodEnd >= currentDate) {
+            if (
+              employee.joiningDate > currentPeriod.periodEnd ||
+              firstSalary.effectiveFrom > currentPeriod.periodEnd
+            ) {
               result.skippedCount++;
               addResultItem(result.skipped, {
                 employeeId: employee.id,
                 employeeCode: employee.employeeCode,
-                reason: "No completed payroll period available yet",
+                periodStart: formatDate(currentPeriod.periodStart),
+                periodEnd: formatDate(currentPeriod.periodEnd),
+                reason: "Employee was not eligible in the current payroll cycle",
               });
               schedulerItemsToCreate.push({
                 runId: run.id,
                 employeeId: employee.id,
                 employeeCode: employee.employeeCode,
+                periodStart: currentPeriod.periodStart,
+                periodEnd: currentPeriod.periodEnd,
                 status: SchedulerRunItemStatus.SKIPPED,
-                reason: "No completed payroll period available yet",
+                reason: "Employee was not eligible in the current payroll cycle",
+              });
+              return;
+            }
+
+            const payroll = await PayrollService.generate(
+              {
+                employeeId: employee.id,
+                periodStart: formatDate(currentPeriod.periodStart),
+                periodEnd: formatDate(currentPeriod.periodEnd),
+                createPayslip: false,
+              },
+              "SUPER_ADMIN" as any,
+            );
+
+            const payrollResult = payroll as any;
+            const generatedPayrollId =
+              payrollResult?.payroll?.id ?? payrollResult?.id;
+
+            if (!generatedPayrollId) {
+              throw new Error("Payroll generation did not return payroll id");
+            }
+
+            result.successCount++;
+            addResultItem(result.generated, {
+              employeeId: employee.id,
+              employeeCode: employee.employeeCode,
+              periodStart: formatDate(currentPeriod.periodStart),
+              periodEnd: formatDate(currentPeriod.periodEnd),
+              payrollId: generatedPayrollId,
+            });
+            if (STORE_ITEM_DETAILS) {
+              schedulerItemsToCreate.push({
+                runId: run.id,
+                employeeId: employee.id,
+                employeeCode: employee.employeeCode,
+                periodStart: currentPeriod.periodStart,
+                periodEnd: currentPeriod.periodEnd,
+                status: SchedulerRunItemStatus.SUCCESS,
+                payrollId: generatedPayrollId,
               });
             }
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : "Unknown error";
+
+            if (/payroll already|active payroll already/i.test(errorMessage)) {
+              result.skippedCount++;
+              addResultItem(result.skipped, {
+                employeeId: employee.id,
+                employeeCode: employee.employeeCode,
+                reason: "Current payroll cycle was already handled",
+              });
+              if (STORE_ITEM_DETAILS) {
+                const period = targetPeriods.get(employee.salaryType)!;
+
+                schedulerItemsToCreate.push({
+                  runId: run.id,
+                  employeeId: employee.id,
+                  employeeCode: employee.employeeCode,
+                  periodStart: period.periodStart,
+                  periodEnd: period.periodEnd,
+                  status: SchedulerRunItemStatus.SKIPPED,
+                  reason: "Current payroll cycle was already handled",
+                });
+              }
+              return;
+            }
 
             result.failureCount++;
             addResultItem(result.failed, {
@@ -413,7 +462,8 @@ export class SchedulerService {
           } finally {
             result.processedEmployees++;
           }
-        }
+        },
+        );
 
         await SchedulerRepository.createRunItems(schedulerItemsToCreate);
         await SchedulerRepository.updateRun(run.id, {
@@ -458,6 +508,7 @@ export class SchedulerService {
   }
 
   static async listRuns(query: any) {
+    await this.recoverStaleRuns();
     const { page, limit, skip, take } = getPagination(query);
 
     const [runs, total] = await SchedulerRepository.listRuns({
@@ -472,6 +523,7 @@ export class SchedulerService {
   }
 
   static async getRunStatus(id: string) {
+    await this.recoverStaleRuns();
     return SchedulerRepository.findRunById(id);
   }
 
@@ -493,6 +545,40 @@ export class SchedulerService {
       take,
       ...(status && { status }),
     });
+
+    const metadata = run.metadata as any;
+
+    if (
+      status === SchedulerRunItemStatus.SUCCESS &&
+      total === 0 &&
+      Array.isArray(metadata?.generated) &&
+      metadata.generated.length > 0
+    ) {
+      const generatedRows = metadata.generated
+        .slice(skip, skip + take)
+        .map((item: any, index: number) => ({
+          id: `${runId}-generated-${skip + index}`,
+          runId,
+          employeeId: item.employeeId,
+          employeeCode: item.employeeCode,
+          periodStart: item.periodStart,
+          periodEnd: item.periodEnd,
+          status: SchedulerRunItemStatus.SUCCESS,
+          payrollId: item.payrollId ?? null,
+          reason: null,
+          errorMessage: null,
+          createdAt: run.completedAt ?? run.createdAt,
+        }));
+
+      return {
+        data: generatedRows,
+        pagination: buildPaginationMeta(
+          metadata.generated.length,
+          page,
+          limit,
+        ),
+      };
+    }
 
     return {
       data: items,

@@ -287,6 +287,7 @@ export class SalaryCalculationService {
       workHourSettings,
       advances,
       pendingCarryForwards,
+      unprocessedEarlierAdvances,
     ] = await Promise.all([
       SalaryCalculationRepository.getSalaryHistories(
         data.employeeId,
@@ -310,8 +311,27 @@ export class SalaryCalculationService {
         data.employeeId,
         periodStart,
       ),
+      SalaryCalculationRepository.getUnprocessedEarlierAdvances(
+        data.employeeId,
+        periodStart,
+      ),
     ]);
     timer.checkpoint("payroll inputs fetch");
+
+    if (unprocessedEarlierAdvances.length > 0) {
+      const pendingCycles = [
+        ...new Set(
+          unprocessedEarlierAdvances.map(
+            (advance) =>
+              `${formatDate(advance.cycleStartDate)} to ${formatDate(advance.cycleEndDate)}`,
+          ),
+        ),
+      ];
+
+      throw new Error(
+        `Earlier advance deduction cycle is not yet processed: ${pendingCycles.join(", ")}. Generate that payroll first so any unpaid balance is carried forward correctly.`,
+      );
+    }
 
     if (salaryHistories.length === 0) {
       throw new Error("No salary history found for this employee");
@@ -541,13 +561,24 @@ export class SalaryCalculationService {
     );
     let carryForwardApplied = 0;
     const appliedCarryForwards = [];
+    const eligibleCarryForwards = pendingCarryForwards.map((item) => ({
+      ...item,
+      amount: Number(item.amount),
+      remainingAmount: Number(item.remainingAmount),
+      sourceCycleStartDate: formatDate(item.cycleStartDate),
+      sourceCycleEndDate: formatDate(item.cycleEndDate),
+      appliedToPeriodStart: formatDate(periodStart),
+      appliedToPeriodEnd: formatDate(periodEnd),
+    }));
 
-    for (const item of pendingCarryForwards) {
+    for (const item of eligibleCarryForwards) {
       if (remainingGrossForCarryForward <= 0) break;
 
       const applyAmount = roundMoney(
-        Math.min(Number(item.remainingAmount), remainingGrossForCarryForward),
+        Math.min(item.remainingAmount, remainingGrossForCarryForward),
       );
+
+      if (applyAmount <= 0) continue;
 
       carryForwardApplied = roundMoney(carryForwardApplied + applyAmount);
       remainingGrossForCarryForward = roundMoney(
@@ -557,10 +588,14 @@ export class SalaryCalculationService {
       appliedCarryForwards.push({
         id: item.id,
         sourcePayrollId: item.sourcePayrollId,
-        amount: Number(item.amount),
-        remainingAmount: Number(item.remainingAmount),
+        amount: item.amount,
+        remainingAmount: item.remainingAmount,
         appliedAmount: applyAmount,
         previousStatus: item.status,
+        sourceCycleStartDate: item.sourceCycleStartDate,
+        sourceCycleEndDate: item.sourceCycleEndDate,
+        appliedToPeriodStart: item.appliedToPeriodStart,
+        appliedToPeriodEnd: item.appliedToPeriodEnd,
       });
     }
 
@@ -605,7 +640,7 @@ export class SalaryCalculationService {
         advanceDeduction,
       },
       carryForwardSummary: {
-        pendingCarryForwards,
+        pendingCarryForwards: eligibleCarryForwards,
         appliedCarryForwards,
         carryForwardApplied,
       },

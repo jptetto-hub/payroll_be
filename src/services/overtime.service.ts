@@ -178,8 +178,10 @@ export class OvertimeService {
     otManualOverride?: boolean;
     otHours?: number | null;
     otOverrideReason?: string | null;
+    setting?: any;
   }) {
-    const setting = await this.getSettingForDate(params.attendanceDate);
+    const setting =
+      params.setting ?? (await this.getSettingForDate(params.attendanceDate));
     const standardStart = dateAtTime(params.attendanceDate, setting.workStartTime);
     let standardEnd = dateAtTime(params.attendanceDate, setting.workEndTime);
 

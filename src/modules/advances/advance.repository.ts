@@ -1,5 +1,10 @@
 import { prisma, readPrisma } from "../../config/prisma";
-import { AdvanceSettlementStatus, Prisma, SalaryType } from "@prisma/client";
+import {
+  AdvanceSettlementStatus,
+  CarryForwardStatus,
+  Prisma,
+  SalaryType,
+} from "@prisma/client";
 import { CacheService } from "../../utils/cache";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
@@ -267,6 +272,63 @@ export class AdvanceRepository {
           },
         }),
       },
+    });
+  }
+
+  static getPendingCarryForwardsBeforeCycle(
+    employeeId: string,
+    cycleStartDate: Date,
+  ) {
+    return prisma.payrollCarryForward.findMany({
+      where: {
+        employeeId,
+        cycleEndDate: {
+          lt: cycleStartDate,
+        },
+        status: {
+          in: [
+            CarryForwardStatus.PENDING,
+            CarryForwardStatus.PARTIALLY_DEDUCTED,
+          ],
+        },
+        remainingAmount: {
+          gt: 0,
+        },
+      },
+      select: {
+        id: true,
+        sourcePayrollId: true,
+        cycleStartDate: true,
+        cycleEndDate: true,
+        remainingAmount: true,
+      },
+      orderBy: [{ cycleEndDate: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  static getUnprocessedEarlierAdvances(
+    employeeId: string,
+    cycleStartDate: Date,
+  ) {
+    return prisma.advancePayment.findMany({
+      where: {
+        employeeId,
+        cycleEndDate: {
+          lt: cycleStartDate,
+        },
+        isSettled: false,
+        remainingAmount: {
+          gt: 0,
+        },
+        lockedByPayrollId: null,
+      },
+      select: {
+        id: true,
+        cycleStartDate: true,
+        cycleEndDate: true,
+        remainingAmount: true,
+      },
+      orderBy: { cycleStartDate: "asc" },
     });
   }
 

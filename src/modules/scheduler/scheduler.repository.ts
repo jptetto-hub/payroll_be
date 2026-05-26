@@ -1,8 +1,9 @@
 import { prisma } from "../../config/prisma";
 import {
   EmployeeStatus,
-  Prisma,
   PayrollStatus,
+  Prisma,
+  SalaryType,
   SchedulerRunItemStatus,
   SchedulerRunStatus,
 } from "@prisma/client";
@@ -10,6 +11,12 @@ import { CacheService } from "../../utils/cache";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
+
+export type SchedulerTargetPeriod = {
+  salaryType: SalaryType;
+  periodStart: Date;
+  periodEnd: Date;
+};
 
 export class SchedulerRepository {
   static getActiveEmployees() {
@@ -32,28 +39,58 @@ export class SchedulerRepository {
     });
   }
 
-  static countActiveEmployees() {
+  static countActiveEmployees(salaryTypes?: SalaryType[]) {
     return prisma.employee.count({
       where: {
         status: EmployeeStatus.ACTIVE,
+        ...(salaryTypes?.length
+          ? {
+              salaryType: {
+                in: salaryTypes,
+              },
+            }
+          : {}),
       },
     });
   }
 
-  static getActiveEmployeesBatch(params: { take: number; cursor?: string }) {
+  static countPendingActiveEmployees(targetPeriods: SchedulerTargetPeriod[]) {
+    return prisma.employee.count({
+      where: {
+        status: EmployeeStatus.ACTIVE,
+        OR: targetPeriods.map((period) => ({
+          salaryType: period.salaryType,
+          payrolls: {
+            none: {
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            },
+          },
+        })),
+      },
+    });
+  }
+
+  static getPendingActiveEmployeesBatch(params: {
+    take: number;
+    cursor?: string;
+    targetPeriods: SchedulerTargetPeriod[];
+  }) {
     return prisma.employee.findMany({
       where: {
         status: EmployeeStatus.ACTIVE,
+        ...(params.cursor ? { id: { gt: params.cursor } } : {}),
+        OR: params.targetPeriods.map((period) => ({
+          salaryType: period.salaryType,
+          payrolls: {
+            none: {
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            },
+          },
+        })),
       },
       take: params.take,
-      ...(params.cursor
-        ? {
-            skip: 1,
-            cursor: {
-              id: params.cursor,
-            },
-          }
-        : {}),
       select: {
         id: true,
         employeeCode: true,
@@ -62,6 +99,54 @@ export class SchedulerRepository {
         joiningDate: true,
         role: true,
         status: true,
+      },
+      orderBy: {
+        id: "asc",
+      },
+    });
+  }
+
+  static getHandledActiveEmployeesBatch(params: {
+    take: number;
+    cursor?: string;
+    targetPeriods: SchedulerTargetPeriod[];
+  }) {
+    return prisma.employee.findMany({
+      where: {
+        status: EmployeeStatus.ACTIVE,
+        ...(params.cursor ? { id: { gt: params.cursor } } : {}),
+        OR: params.targetPeriods.map((period) => ({
+          salaryType: period.salaryType,
+          payrolls: {
+            some: {
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            },
+          },
+        })),
+      },
+      take: params.take,
+      select: {
+        id: true,
+        employeeCode: true,
+        salaryType: true,
+        payrolls: {
+          where: {
+            OR: params.targetPeriods.map((period) => ({
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            })),
+          },
+          select: {
+            id: true,
+            periodStart: true,
+            periodEnd: true,
+            status: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
       },
       orderBy: {
         id: "asc",
@@ -130,27 +215,35 @@ export class SchedulerRepository {
   }
 
   static async getFirstSalaryHistories(employeeIds: string[]) {
-    const salaryHistories = await prisma.salaryHistory.findMany({
-      where: {
-        employeeId: {
-          in: employeeIds,
-        },
-      },
-      orderBy: [
+    if (employeeIds.length === 0) {
+      return new Map<
+        string,
         {
-          employeeId: "asc",
-        },
-        {
-          effectiveFrom: "asc",
-        },
-      ],
-      select: {
-        id: true,
-        employeeId: true,
-        salaryAmount: true,
-        effectiveFrom: true,
-      },
-    });
+          id: string;
+          employeeId: string;
+          salaryAmount: Prisma.Decimal;
+          effectiveFrom: Date;
+        }
+      >();
+    }
+
+    const salaryHistories = await prisma.$queryRaw<
+      {
+        id: string;
+        employeeId: string;
+        salaryAmount: Prisma.Decimal;
+        effectiveFrom: Date;
+      }[]
+    >`
+      SELECT DISTINCT ON ("employeeId")
+        id,
+        "employeeId",
+        "salaryAmount",
+        "effectiveFrom"
+      FROM "SalaryHistory"
+      WHERE "employeeId" IN (${Prisma.join(employeeIds)})
+      ORDER BY "employeeId", "effectiveFrom" ASC
+    `;
 
     const firstSalaryMap = new Map<string, (typeof salaryHistories)[number]>();
 
@@ -161,151 +254,6 @@ export class SchedulerRepository {
     }
 
     return firstSalaryMap;
-  }
-
-  static async getLatestPayrolls(employeeIds: string[]) {
-    if (employeeIds.length === 0) {
-      return new Map<
-        string,
-        {
-          id: string;
-          employeeId: string;
-          periodStart: Date;
-          periodEnd: Date;
-          status: PayrollStatus;
-          version: number;
-        }
-      >();
-    }
-
-    const payrolls = await prisma.$queryRaw<
-      {
-        id: string;
-        employeeId: string;
-        periodStart: Date;
-        periodEnd: Date;
-        status: PayrollStatus;
-        version: number;
-      }[]
-    >`
-      SELECT DISTINCT ON ("employeeId")
-        id,
-        "employeeId",
-        "periodStart",
-        "periodEnd",
-        status,
-        version
-      FROM "Payroll"
-      WHERE "employeeId" IN (${Prisma.join(employeeIds)})
-        AND status IN (
-          ${PayrollStatus.GENERATED},
-          ${PayrollStatus.PAID},
-          ${PayrollStatus.SUPERSEDED}
-        )
-      ORDER BY "employeeId", "periodEnd" DESC
-    `;
-
-    const latestPayrollMap = new Map<string, (typeof payrolls)[number]>();
-
-    for (const payroll of payrolls) {
-      if (!latestPayrollMap.has(payroll.employeeId)) {
-        latestPayrollMap.set(payroll.employeeId, payroll);
-      }
-    }
-
-    return latestPayrollMap;
-  }
-
-  static async getPayrollsForEmployeesInDateRange(params: {
-    employeeIds: string[];
-    minPeriodStart: Date;
-    maxPeriodEnd: Date;
-  }) {
-    const payrolls = await prisma.payroll.findMany({
-      where: {
-        employeeId: {
-          in: params.employeeIds,
-        },
-        periodStart: {
-          gte: params.minPeriodStart,
-        },
-        periodEnd: {
-          lte: params.maxPeriodEnd,
-        },
-        status: {
-          not: PayrollStatus.CANCELLED,
-        },
-      },
-      select: {
-        id: true,
-        employeeId: true,
-        periodStart: true,
-        periodEnd: true,
-        status: true,
-        version: true,
-      },
-    });
-
-    const payrollMap = new Map<string, (typeof payrolls)[number]>();
-
-    for (const payroll of payrolls) {
-      const key = SchedulerRepository.getPayrollPeriodKey(
-        payroll.employeeId,
-        payroll.periodStart,
-        payroll.periodEnd,
-      );
-      payrollMap.set(key, payroll);
-    }
-
-    return payrollMap;
-  }
-
-  static async getExistingPayrollsForBatch(params: {
-    employeeIds: string[];
-    maxPeriodEnd: Date;
-  }) {
-    const payrolls = await prisma.payroll.findMany({
-      where: {
-        employeeId: {
-          in: params.employeeIds,
-        },
-        periodEnd: {
-          lte: params.maxPeriodEnd,
-        },
-        status: {
-          not: PayrollStatus.CANCELLED,
-        },
-      },
-      select: {
-        id: true,
-        employeeId: true,
-        periodStart: true,
-        periodEnd: true,
-        status: true,
-        version: true,
-      },
-    });
-
-    const payrollMap = new Map<string, (typeof payrolls)[number]>();
-
-    for (const payroll of payrolls) {
-      const key = SchedulerRepository.getPayrollPeriodKey(
-        payroll.employeeId,
-        payroll.periodStart,
-        payroll.periodEnd,
-      );
-      payrollMap.set(key, payroll);
-    }
-
-    return payrollMap;
-  }
-
-  static getPayrollPeriodKey(
-    employeeId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ) {
-    return `${employeeId}_${periodStart.toISOString()}_${periodEnd.toISOString()}`;
   }
 
   static createRun(data: {
@@ -339,6 +287,27 @@ export class SchedulerRepository {
       },
       orderBy: {
         createdAt: "desc",
+      },
+    });
+  }
+
+  static markStaleActiveRunsFailed(params: {
+    staleBefore: Date;
+    errorMessage: string;
+  }) {
+    return prisma.schedulerRun.updateMany({
+      where: {
+        status: {
+          in: [SchedulerRunStatus.PENDING, SchedulerRunStatus.RUNNING],
+        },
+        updatedAt: {
+          lt: params.staleBefore,
+        },
+      },
+      data: {
+        status: SchedulerRunStatus.FAILED,
+        completedAt: new Date(),
+        errorMessage: params.errorMessage,
       },
     });
   }
@@ -487,6 +456,7 @@ export class SchedulerRepository {
         startedAt: true,
         completedAt: true,
         errorMessage: true,
+        metadata: true,
         createdAt: true,
         updatedAt: true,
       },
