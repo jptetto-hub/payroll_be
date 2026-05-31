@@ -76,6 +76,31 @@ function amount(value) {
   return Number(value);
 }
 
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function waitForQueuedPayroll(token, jobId) {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const res = await request("GET", `/api/scheduler/runs/${jobId}`, { token });
+    const status = res.data?.data?.status;
+
+    if (status === "COMPLETED") {
+      pass(`Queued payroll generation completed: ${jobId}`);
+      return await findExistingPayroll(token);
+    }
+
+    if (status === "FAILED" || status === "PARTIAL_SUCCESS") {
+      fail("Queued payroll generation failed", res.data);
+      return null;
+    }
+
+    await sleep(1000);
+  }
+
+  warn(`Queued payroll generation is still running: ${jobId}`);
+  return null;
+}
+
 async function login(label, phone, password) {
   if (!phone || !password) {
     warn(`${label} login skipped because env credentials are missing`);
@@ -154,6 +179,13 @@ async function generateWeeklyPayroll(token) {
   const res = await request("POST", "/api/payroll/generate", { token, body });
 
   if (res.ok) {
+    const jobId = res.data?.data?.jobId;
+
+    if (jobId) {
+      pass(`Weekly cross-month payroll queued: ${jobId}`);
+      return await waitForQueuedPayroll(token, jobId);
+    }
+
     const payroll = res.data?.data?.payroll || res.data?.data || res.data;
     const id = payroll?.id || extractId(res.data);
     pass(`Weekly cross-month payroll generated${id ? `: ${id}` : ""}`);

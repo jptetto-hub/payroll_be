@@ -5,8 +5,21 @@ import {
   getPagination,
 } from "../../shared/utils/pagination.util";
 import { assertSalaryHistoryNotLocked } from "../../shared/payroll/payroll-lock.util";
+import { CacheService } from "../../utils/cache";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+const SALARY_HISTORY_READ_CACHE_PREFIX = "salary-history-read";
+const SALARY_HISTORY_READ_CACHE_TTL = 60;
+
+const invalidateSalaryHistoryReadCaches = (employeeId: string) => {
+  void Promise.all([
+    CacheService.delByPattern(
+      `${SALARY_HISTORY_READ_CACHE_PREFIX}:${employeeId}:*`,
+    ),
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+  ]);
+};
 
 const ensureDateOnOrAfterJoining = (params: {
   date: Date;
@@ -77,11 +90,15 @@ export class SalaryHistoryService {
       );
     }
 
-    return SalaryHistoryRepository.create({
+    const salaryHistory = await SalaryHistoryRepository.create({
       employeeId: data.employeeId,
       salaryAmount: data.salaryAmount,
       effectiveFrom,
     });
+
+    invalidateSalaryHistoryReadCaches(data.employeeId);
+
+    return salaryHistory;
   }
 
   static async listSalaryHistory(
@@ -92,25 +109,41 @@ export class SalaryHistoryService {
   ) {
     this.ensureAllowedReadAccess(employeeId, currentUserRole, currentUserId);
 
-    const employee = await SalaryHistoryRepository.findEmployee(employeeId);
+    const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      SALARY_HISTORY_READ_CACHE_PREFIX,
+      employeeId,
+      "list",
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const [employee, histories, total] = await Promise.all([
+      SalaryHistoryRepository.findEmployeeForRead(employeeId),
+      SalaryHistoryRepository.listByEmployee(employeeId, { skip, take }),
+      SalaryHistoryRepository.countByEmployee(employeeId),
+    ]);
 
     if (!employee) {
       throw new Error("Employee not found");
     }
 
-    const { page, limit, skip, take } = getPagination(query);
-    const [histories, total] = await Promise.all([
-      SalaryHistoryRepository.listByEmployee(employeeId, { skip, take }),
-      SalaryHistoryRepository.countByEmployee(employeeId),
-    ]);
-
-    return {
+    const result = {
       data: {
         employee,
         histories,
       },
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, SALARY_HISTORY_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async getCurrentSalary(
@@ -119,19 +152,34 @@ export class SalaryHistoryService {
     currentUserId: string,
   ) {
     this.ensureAllowedReadAccess(employeeId, currentUserRole, currentUserId);
+    const cacheKey = CacheService.buildKey(
+      SALARY_HISTORY_READ_CACHE_PREFIX,
+      employeeId,
+      "current",
+    );
+    const cached = await CacheService.get<any>(cacheKey);
 
-    const employee = await SalaryHistoryRepository.findEmployee(employeeId);
+    if (cached) {
+      return cached;
+    }
+
+    const [employee, salary] = await Promise.all([
+      SalaryHistoryRepository.findEmployeeForRead(employeeId),
+      SalaryHistoryRepository.getCurrentSalary(employeeId),
+    ]);
 
     if (!employee) {
       throw new Error("Employee not found");
     }
 
-    const salary = await SalaryHistoryRepository.getCurrentSalary(employeeId);
-
-    return {
+    const result = {
       employee,
       salary,
     };
+
+    void CacheService.set(cacheKey, result, SALARY_HISTORY_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async resolveSalary(
@@ -142,32 +190,45 @@ export class SalaryHistoryService {
   ) {
     this.ensureAllowedReadAccess(employeeId, currentUserRole, currentUserId);
 
-    const employee = await SalaryHistoryRepository.findEmployee(employeeId);
-
-    if (!employee) {
-      throw new Error("Employee not found");
-    }
-
     const targetDate = new Date(date);
 
     if (Number.isNaN(targetDate.getTime())) {
       throw new Error("Invalid date format. Use YYYY-MM-DD or ISO date format");
     }
-
-    const salary = await SalaryHistoryRepository.resolveSalaryByDate(
+    const cacheKey = CacheService.buildKey(
+      SALARY_HISTORY_READ_CACHE_PREFIX,
       employeeId,
-      targetDate,
+      "resolve",
+      formatDate(targetDate),
     );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const [employee, salary] = await Promise.all([
+      SalaryHistoryRepository.findEmployeeForRead(employeeId),
+      SalaryHistoryRepository.resolveSalaryByDate(employeeId, targetDate),
+    ]);
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
 
     if (!salary) {
       throw new Error("No salary history found for the selected date");
     }
 
-    return {
+    const result = {
       employee,
       targetDate,
       salary,
     };
+
+    void CacheService.set(cacheKey, result, SALARY_HISTORY_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async updateSalaryHistory(
@@ -229,7 +290,7 @@ export class SalaryHistoryService {
       });
     }
 
-    return SalaryHistoryRepository.update(id, {
+    const salaryHistory = await SalaryHistoryRepository.update(id, {
       ...(data.salaryAmount !== undefined && {
         salaryAmount: data.salaryAmount,
       }),
@@ -237,6 +298,10 @@ export class SalaryHistoryService {
         effectiveFrom,
       }),
     });
+
+    invalidateSalaryHistoryReadCaches(existing.employeeId);
+
+    return salaryHistory;
   }
 
   static async deleteSalaryHistory(
@@ -273,6 +338,10 @@ export class SalaryHistoryService {
       effectiveFrom: existing.effectiveFrom,
     });
 
-    return SalaryHistoryRepository.delete(id);
+    const salaryHistory = await SalaryHistoryRepository.delete(id);
+
+    invalidateSalaryHistoryReadCaches(existing.employeeId);
+
+    return salaryHistory;
   }
 }

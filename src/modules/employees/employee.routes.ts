@@ -36,7 +36,7 @@ router.get(
 
 router.get(
   "/:id",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
   EmployeeController.getById,
 );
 

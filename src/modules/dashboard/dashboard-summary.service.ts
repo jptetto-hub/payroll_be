@@ -9,6 +9,7 @@ import {
 import { prisma, readPrisma } from "../../config/prisma";
 import { AppError } from "../../shared/utils/app-error";
 import { CacheService } from "../../utils/cache";
+import { logger } from "../../config/logger";
 
 const parseFromDate = (value?: string) =>
   value ? new Date(`${value}T00:00:00.000Z`) : undefined;
@@ -63,6 +64,38 @@ export const parseDashboardSummaryRange = (
 };
 
 export class DashboardSummaryService {
+  private static emptyGlobalSummary(params: DashboardSummaryRange) {
+    return {
+      summaryKey: buildGlobalDashboardSummaryKey(
+        params.periodStart,
+        params.periodEnd,
+      ),
+      type: DashboardSummaryType.GLOBAL,
+      employeeId: null,
+      periodStart: params.periodStart ?? null,
+      periodEnd: params.periodEnd ?? null,
+      totalEmployees: 0,
+      activeEmployees: 0,
+      inactiveEmployees: 0,
+      pendingAttendanceRequests: 0,
+      approvedAttendanceRequests: 0,
+      rejectedAttendanceRequests: 0,
+      generatedPayrolls: 0,
+      paidPayrolls: 0,
+      cancelledPayrolls: 0,
+      grossSalaryTotal: 0,
+      advanceDeductionTotal: 0,
+      finalSalaryTotal: 0,
+      outstandingAdvanceTotal: 0,
+      ledgerSalaryTotal: 0,
+      ledgerAdvanceTotal: 0,
+      ledgerDeductionTotal: 0,
+      ledgerAdjustmentTotal: 0,
+      calculatedAt: new Date(),
+      isRefreshing: true,
+    };
+  }
+
   static async refreshGlobalSummary(params: {
     periodStart?: Date | undefined;
     periodEnd?: Date | undefined;
@@ -312,6 +345,24 @@ export class DashboardSummaryService {
       return summary;
     }
 
-    return this.refreshGlobalSummary(params);
+    const latestSummary = await readPrisma.dashboardSummary.findFirst({
+      where: {
+        type: DashboardSummaryType.GLOBAL,
+      },
+      orderBy: {
+        calculatedAt: "desc",
+      },
+    });
+
+    void this.refreshGlobalSummary(params).catch((error) => {
+      logger.error({ error }, "Dashboard summary background refresh failed");
+    });
+
+    return latestSummary
+      ? {
+          ...latestSummary,
+          isRefreshing: true,
+        }
+      : this.emptyGlobalSummary(params);
   }
 }

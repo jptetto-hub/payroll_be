@@ -36,8 +36,8 @@ export default function (data) {
 
   check(res, {
     "payroll generate success or duplicate": (r) =>
-      [200, 201, 400, 409].includes(r.status),
-    "payroll generate under 3s": (r) => r.timings.duration < 3000,
+      [200, 201, 202, 400, 409].includes(r.status),
+    "payroll generate queued under 1s": (r) => r.timings.duration < 1000,
   });
 
   sleep(1);

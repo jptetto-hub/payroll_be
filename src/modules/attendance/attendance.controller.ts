@@ -43,6 +43,7 @@ export class AttendanceController {
         module: "ATTENDANCE",
         newData: result,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.status(201).json({
         success: true,
@@ -66,7 +67,6 @@ export class AttendanceController {
         module: "ATTENDANCE_BULK",
         newData: {
           count: result.createdCount,
-          records: result.records,
           skippedCount: result.skippedCount,
           conflicts: result.conflicts,
         },
@@ -155,6 +155,7 @@ export class AttendanceController {
           reason: req.body.reason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -184,6 +185,7 @@ export class AttendanceController {
           deletedRecord: result,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -207,7 +209,9 @@ export class AttendanceController {
         module: "ATTENDANCE_BULK",
         newData: {
           count: result.length,
-          records: result,
+          attendanceIds: req.body.records.map(
+            (record: { attendanceId: string }) => record.attendanceId,
+          ),
         },
         ipAddress: req.ip,
         skipRelationValidation: true,
@@ -235,10 +239,11 @@ export class AttendanceController {
         module: "ATTENDANCE_BULK",
         newData: {
           count: result.length,
-          deletedRecords: result,
+          attendanceIds: req.body.attendanceIds,
           reason: req.body.reason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,

@@ -21,6 +21,18 @@ const parseDateOnly = (value: string) => {
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+const ADVANCE_READ_CACHE_PREFIX = "advance-read";
+const ADVANCE_READ_CACHE_TTL = 30;
+
+const invalidateAdvanceReadCaches = () => {
+  void Promise.all([
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+    CacheService.delByPattern("advance-summary:*"),
+    CacheService.delByPattern(`${ADVANCE_READ_CACHE_PREFIX}:*`),
+    CacheService.delByPattern("ledger-read:*"),
+  ]);
+};
 
 const ensureDateOnOrAfterJoining = (params: {
   date: Date;
@@ -466,10 +478,7 @@ export class AdvanceService {
       date: advanceDate,
     });
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("advance-summary:*"),
-    ]);
+    invalidateAdvanceReadCaches();
 
     return {
       advance,
@@ -479,22 +488,39 @@ export class AdvanceService {
 
   static async listAdvances(query: any, authUser: { id: string; role: Role }) {
     const { page, limit, skip, take } = getPagination(query);
-    const { employeeWhere } = resolveEmployeeScope({
+    const { directEmployeeId, employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
 
     const isSettled =
       query.isSettled === undefined ? undefined : query.isSettled === "true";
+    const cacheKey = CacheService.buildKey(
+      ADVANCE_READ_CACHE_PREFIX,
+      "list",
+      authUser.role,
+      authUser.id,
+      query.employeeId ?? "all",
+      isSettled === undefined ? "all" : String(isSettled),
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const listParams: {
       skip: number;
       take: number;
+      employeeId?: string;
       employeeWhere?: Prisma.EmployeeWhereInput;
       isSettled?: boolean;
     } = {
       skip,
       take,
+      ...(directEmployeeId && { employeeId: directEmployeeId }),
       employeeWhere,
     };
 
@@ -504,23 +530,44 @@ export class AdvanceService {
 
     const [advances, total] = await AdvanceRepository.listAll(listParams);
 
-    return {
+    const result = {
       data: advances,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, ADVANCE_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async myAdvances(employeeId: string, query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      ADVANCE_READ_CACHE_PREFIX,
+      "my",
+      employeeId,
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const [advances, total] = await Promise.all([
       AdvanceRepository.listByEmployee(employeeId, { skip, take }),
       AdvanceRepository.countByEmployee(employeeId),
     ]);
 
-    return {
+    const result = {
       data: advances,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, ADVANCE_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async getAdvanceById(
@@ -559,15 +606,32 @@ export class AdvanceService {
     ensureAccessToEmployee(employee.role, currentUserRole);
 
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      ADVANCE_READ_CACHE_PREFIX,
+      "employee",
+      employeeId,
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const [advances, total] = await Promise.all([
       AdvanceRepository.listByEmployee(employeeId, { skip, take }),
       AdvanceRepository.countByEmployee(employeeId),
     ]);
 
-    return {
+    const result = {
       data: advances,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, ADVANCE_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async listByCycle(
@@ -591,11 +655,28 @@ export class AdvanceService {
       throw new Error("cycleStartDate cannot be greater than cycleEndDate");
     }
 
-    return AdvanceRepository.listByCycle(
+    const cacheKey = CacheService.buildKey(
+      ADVANCE_READ_CACHE_PREFIX,
+      "cycle",
+      employeeId,
+      cycleStartDateValue,
+      cycleEndDateValue,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    const advances = await AdvanceRepository.listByCycle(
       employeeId,
       cycleStartDate,
       cycleEndDate,
     );
+
+    void CacheService.set(cacheKey, advances, ADVANCE_READ_CACHE_TTL);
+
+    return advances;
   }
 
   static async updateAdvance(
@@ -692,10 +773,7 @@ export class AdvanceService {
     });
     const updatedAdvance = await AdvanceRepository.update(id, updateData);
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("advance-summary:*"),
-    ]);
+    invalidateAdvanceReadCaches();
 
     return updatedAdvance;
   }
@@ -731,10 +809,7 @@ export class AdvanceService {
 
     const deletedAdvance = await AdvanceRepository.delete(id);
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("advance-summary:*"),
-    ]);
+    invalidateAdvanceReadCaches();
 
     return deletedAdvance;
   }

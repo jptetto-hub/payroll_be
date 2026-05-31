@@ -1,4 +1,4 @@
-import { PayrollStatus } from "@prisma/client";
+import { PayrollStatus, SalaryType } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { AppError } from "../utils/app-error";
 
@@ -11,20 +11,57 @@ export const findActivePayrollForDate = async (
   employeeId: string,
   date: Date,
 ) => {
+  const nextDay = new Date(date);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
   return prisma.payroll.findFirst({
     where: {
       employeeId,
       status: {
         in: ACTIVE_LOCK_STATUSES,
       },
-      periodStart: {
-        lte: date,
-      },
-      periodEnd: {
-        gte: date,
-      },
+      OR: [
+        {
+          periodStart: {
+            lte: date,
+          },
+          periodEnd: {
+            gte: date,
+          },
+        },
+        ...(date.getUTCDay() === 0
+          ? [
+              {
+                salaryType: SalaryType.WEEKLY,
+                periodStart: nextDay,
+              },
+            ]
+          : []),
+      ],
     },
   });
+};
+
+export const isAttendanceDateLockedByPayroll = (
+  payroll: {
+    salaryType: SalaryType;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+  date: Date,
+) => {
+  if (payroll.periodStart <= date && payroll.periodEnd >= date) {
+    return true;
+  }
+
+  if (payroll.salaryType !== SalaryType.WEEKLY || date.getUTCDay() !== 0) {
+    return false;
+  }
+
+  const nextDay = new Date(date);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+  return payroll.periodStart.getTime() === nextDay.getTime();
 };
 
 export const findActivePayrollForCycle = async ({
@@ -71,6 +108,20 @@ export const assertAttendanceApprovalNotLocked = async (
   if (payroll) {
     throw new AppError(
       "Cannot approve attendance request because payroll already exists for this attendance period. Cancel or recalculate payroll first.",
+      400,
+    );
+  }
+};
+
+export const assertAttendanceRequestNotLocked = async (
+  employeeId: string,
+  date: Date,
+) => {
+  const payroll = await findActivePayrollForDate(employeeId, date);
+
+  if (payroll) {
+    throw new AppError(
+      "Cannot submit attendance request because payroll already exists for this attendance period. Cancel or recalculate payroll first.",
       400,
     );
   }

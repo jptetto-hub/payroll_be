@@ -19,7 +19,7 @@ router.get("/", allowRoles(Role.SUPER_ADMIN), SettingsController.get);
 
 router.get(
   "/work-hours",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
   SettingsController.listWorkHourSettings,
 );
 

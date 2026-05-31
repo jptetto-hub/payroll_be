@@ -19,6 +19,7 @@ export class AttendanceRequestController {
         module: "ATTENDANCE_REQUEST",
         newData: result,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.status(201).json({
         success: true,
@@ -106,6 +107,7 @@ export class AttendanceRequestController {
         module: "ATTENDANCE_REQUEST",
         newData: result,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -137,6 +139,7 @@ export class AttendanceRequestController {
           rejectionReason: req.body.rejectionReason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -166,6 +169,7 @@ export class AttendanceRequestController {
           deletedRequest: result,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,

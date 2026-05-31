@@ -6,149 +6,36 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  USER
-  ADMIN
-  SUPER_ADMIN
-}
-
-enum EmployeeStatus {
-  ACTIVE
-  INACTIVE
-}
-
-enum SalaryType {
-  MONTHLY
-  WEEKLY
-}
-
-enum AttendanceStatus {
-  PRESENT
-  ABSENT
-  HALF_DAY
-}
-
-enum AttendanceRequestType {
-  ADD
-  EDIT
-}
-
-enum RequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum PayrollStatus {
-  GENERATED
-  PAID
-  SUPERSEDED
-  CANCELLED
-}
-
-enum LedgerType {
-  SALARY
-  OVERTIME
-  ADVANCE
-  DEDUCTION
-  ADJUSTMENT
-}
-
-enum WeekStartsOn {
-  MONDAY
-  SUNDAY
-}
-
-enum AuditAction {
-  CREATE
-  UPDATE
-  DELETE
-  APPROVE
-  REJECT
-  LOGIN
-  LOGOUT
-  PAYROLL_GENERATE
-  PAYROLL_RECALCULATE
-  PAYROLL_CANCEL
-  ROLE_CHANGE
-  STATUS_CHANGE
-  EXPORT
-  UNAUTHORIZED
-  VALIDATION_FAILED
-  FAILED
-}
-
-enum AdvanceSettlementStatus {
-  UNSETTLED
-  PARTIALLY_SETTLED
-  SETTLED
-  CARRY_FORWARDED
-}
-
-enum CarryForwardStatus {
-  PENDING
-  PARTIALLY_DEDUCTED
-  DEDUCTED
-  CANCELLED
-}
-
-enum SchedulerRunStatus {
-  PENDING
-  RUNNING
-  COMPLETED
-  FAILED
-  PARTIAL_SUCCESS
-}
-
-enum SchedulerRunItemStatus {
-  SUCCESS
-  SKIPPED
-  FAILED
-}
-
-enum PayslipStatus {
-  PENDING
-  READY
-  FAILED
-}
-
-enum DashboardSummaryType {
-  GLOBAL
-  EMPLOYEE
-}
-
 model Employee {
-  id           String         @id @default(uuid())
-  employeeCode String         @unique
-  name         String
-  email        String?        @unique
-  password     String
-  phone        String         @unique
-  address      String?
-  designation  String?
-  department   String?
-  joiningDate  DateTime
-  salaryType   SalaryType
-  status       EmployeeStatus @default(ACTIVE)
-  role         Role           @default(USER)
-  profileImage String?
-
-  salaryHistories    SalaryHistory[]
+  id                 String                @id @default(uuid())
+  employeeCode       String                @unique
+  name               String
+  email              String?               @unique
+  password           String
+  phone              String                @unique
+  address            String?
+  designation        String?
+  department         String?
+  joiningDate        DateTime
+  salaryType         SalaryType
+  status             EmployeeStatus        @default(ACTIVE)
+  role               Role                  @default(USER)
+  profileImage       String?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  advances           AdvancePayment[]
   attendances        Attendance[]
+  approvedActions    AttendanceRequest[]   @relation("ApprovedBy")
   attendanceRequests AttendanceRequest[]   @relation("EmployeeAttendanceRequests")
   requestedActions   AttendanceRequest[]   @relation("RequestedBy")
-  approvedActions    AttendanceRequest[]   @relation("ApprovedBy")
-  advances           AdvancePayment[]
-  payrolls           Payroll[]
-  payslips           Payslip[]
-  ledgerEntries      LedgerEntry[]
-  auditLogs          AuditLog[]            @relation("AuditUserLogs")
   employeeAuditLogs  AuditLog[]            @relation("AuditEmployeeLogs")
-  carryForwards      PayrollCarryForward[]
+  auditLogs          AuditLog[]            @relation("AuditUserLogs")
   dashboardSummaries DashboardSummary[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  ledgerEntries      LedgerEntry[]
+  payrolls           Payroll[]
+  carryForwards      PayrollCarryForward[]
+  payslips           Payslip[]
+  salaryHistories    SalaryHistory[]
 
   @@index([role])
   @@index([status])
@@ -162,44 +49,34 @@ model Employee {
 }
 
 model DashboardSummary {
-  id         String               @id @default(uuid())
-  summaryKey String               @unique
-  type       DashboardSummaryType
-  employeeId String?
-
-  periodStart DateTime?
-  periodEnd   DateTime?
-
-  totalEmployees    Int @default(0)
-  activeEmployees   Int @default(0)
-  inactiveEmployees Int @default(0)
-
-  pendingAttendanceRequests  Int @default(0)
-  approvedAttendanceRequests Int @default(0)
-  rejectedAttendanceRequests Int @default(0)
-
-  generatedPayrolls Int @default(0)
-  paidPayrolls      Int @default(0)
-  cancelledPayrolls Int @default(0)
-
-  grossSalaryTotal      Decimal @default(0) @db.Decimal(14, 2)
-  advanceDeductionTotal Decimal @default(0) @db.Decimal(14, 2)
-  finalSalaryTotal      Decimal @default(0) @db.Decimal(14, 2)
-
-  outstandingAdvanceTotal Decimal @default(0) @db.Decimal(14, 2)
-
-  ledgerSalaryTotal     Decimal @default(0) @db.Decimal(14, 2)
-  ledgerAdvanceTotal    Decimal @default(0) @db.Decimal(14, 2)
-  ledgerDeductionTotal  Decimal @default(0) @db.Decimal(14, 2)
-  ledgerAdjustmentTotal Decimal @default(0) @db.Decimal(14, 2)
-
-  metadata Json?
-
-  calculatedAt DateTime @default(now())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id                         String               @id @default(uuid())
+  summaryKey                 String               @unique
+  type                       DashboardSummaryType
+  employeeId                 String?
+  periodStart                DateTime?
+  periodEnd                  DateTime?
+  totalEmployees             Int                  @default(0)
+  activeEmployees            Int                  @default(0)
+  inactiveEmployees          Int                  @default(0)
+  pendingAttendanceRequests  Int                  @default(0)
+  approvedAttendanceRequests Int                  @default(0)
+  rejectedAttendanceRequests Int                  @default(0)
+  generatedPayrolls          Int                  @default(0)
+  paidPayrolls               Int                  @default(0)
+  cancelledPayrolls          Int                  @default(0)
+  grossSalaryTotal           Decimal              @default(0) @db.Decimal(14, 2)
+  advanceDeductionTotal      Decimal              @default(0) @db.Decimal(14, 2)
+  finalSalaryTotal           Decimal              @default(0) @db.Decimal(14, 2)
+  outstandingAdvanceTotal    Decimal              @default(0) @db.Decimal(14, 2)
+  ledgerSalaryTotal          Decimal              @default(0) @db.Decimal(14, 2)
+  ledgerAdvanceTotal         Decimal              @default(0) @db.Decimal(14, 2)
+  ledgerDeductionTotal       Decimal              @default(0) @db.Decimal(14, 2)
+  ledgerAdjustmentTotal      Decimal              @default(0) @db.Decimal(14, 2)
+  metadata                   Json?
+  calculatedAt               DateTime             @default(now())
+  createdAt                  DateTime             @default(now())
+  updatedAt                  DateTime             @updatedAt
+  employee                   Employee?            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([type])
   @@index([employeeId])
@@ -208,17 +85,14 @@ model DashboardSummary {
 }
 
 model SalaryHistory {
-  id            String   @id @default(uuid())
-  employeeId    String
-  salaryAmount  Decimal  @db.Decimal(12, 2)
-  effectiveFrom DateTime
-
+  id                  String   @id @default(uuid())
+  employeeId          String
+  salaryAmount        Decimal  @db.Decimal(12, 2)
+  effectiveFrom       DateTime
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
   lockedFromPayrollId String?
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, effectiveFrom])
   @@index([employeeId, effectiveFrom(sort: Desc)], map: "SalaryHistory_employeeId_effectiveFrom_desc_idx")
@@ -227,26 +101,22 @@ model SalaryHistory {
 }
 
 model Attendance {
-  id         String           @id @default(uuid())
-  employeeId String
-  date       DateTime
-  status     AttendanceStatus
-
+  id                String           @id @default(uuid())
+  employeeId        String
+  date              DateTime
+  status            AttendanceStatus
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
   lockedByPayrollId String?
-
-  checkInTime      DateTime?
-  checkOutTime     DateTime?
-  otStartTime      DateTime?
-  otEndTime        DateTime?
-  otHours          Decimal   @default(0) @db.Decimal(7, 2)
-  otManualOverride Boolean   @default(false)
-  otOverrideReason String?
-  otBreakdown      Json?
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  checkInTime       DateTime?
+  checkOutTime      DateTime?
+  otStartTime       DateTime?
+  otEndTime         DateTime?
+  otHours           Decimal          @default(0) @db.Decimal(7, 2)
+  otManualOverride  Boolean          @default(false)
+  otOverrideReason  String?
+  otBreakdown       Json?
+  employee          Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date])
   @@index([date])
@@ -258,35 +128,30 @@ model Attendance {
 }
 
 model AttendanceRequest {
-  id              String                @id @default(uuid())
-  employeeId      String
-  attendanceDate  DateTime
-  oldStatus       AttendanceStatus?
-  requestedStatus AttendanceStatus
-  requestType     AttendanceRequestType
-  reason          String?
-
+  id                        String                @id @default(uuid())
+  employeeId                String
+  attendanceDate            DateTime
+  oldStatus                 AttendanceStatus?
+  requestedStatus           AttendanceStatus
+  requestType               AttendanceRequestType
+  reason                    String?
+  status                    RequestStatus         @default(PENDING)
+  requestedById             String
+  approvedById              String?
+  approvedAt                DateTime?
+  rejectionReason           String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
   requestedCheckInTime      DateTime?
   requestedCheckOutTime     DateTime?
   requestedOtStartTime      DateTime?
   requestedOtEndTime        DateTime?
-  requestedOtHours          Decimal?  @db.Decimal(7, 2)
-  requestedOtManualOverride Boolean   @default(false)
+  requestedOtHours          Decimal?              @db.Decimal(7, 2)
+  requestedOtManualOverride Boolean               @default(false)
   requestedOtOverrideReason String?
-
-  status RequestStatus @default(PENDING)
-
-  requestedById   String
-  approvedById    String?
-  approvedAt      DateTime?
-  rejectionReason String?
-
-  employee    Employee  @relation("EmployeeAttendanceRequests", fields: [employeeId], references: [id], onDelete: Cascade)
-  requestedBy Employee  @relation("RequestedBy", fields: [requestedById], references: [id])
-  approvedBy  Employee? @relation("ApprovedBy", fields: [approvedById], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  approvedBy                Employee?             @relation("ApprovedBy", fields: [approvedById], references: [id])
+  employee                  Employee              @relation("EmployeeAttendanceRequests", fields: [employeeId], references: [id], onDelete: Cascade)
+  requestedBy               Employee              @relation("RequestedBy", fields: [requestedById], references: [id])
 
   @@index([employeeId, attendanceDate])
   @@index([employeeId, status, attendanceDate])
@@ -298,95 +163,80 @@ model AttendanceRequest {
 }
 
 model AdvancePayment {
-  id              String     @id @default(uuid())
-  employeeId      String
-  amount          Decimal    @db.Decimal(12, 2)
-  date            DateTime
-  payCycleType    SalaryType
-  cycleStartDate  DateTime
-  cycleEndDate    DateTime
-  remainingAmount Decimal    @db.Decimal(12, 2)
-  isSettled       Boolean    @default(false)
-
+  id                 String                  @id @default(uuid())
+  employeeId         String
+  amount             Decimal                 @db.Decimal(12, 2)
+  date               DateTime
+  payCycleType       SalaryType
+  cycleStartDate     DateTime
+  cycleEndDate       DateTime
+  remainingAmount    Decimal                 @db.Decimal(12, 2)
+  isSettled          Boolean                 @default(false)
+  note               String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
   settledAmount      Decimal                 @default(0) @db.Decimal(12, 2)
   carryForwardAmount Decimal                 @default(0) @db.Decimal(12, 2)
   settlementStatus   AdvanceSettlementStatus @default(UNSETTLED)
   lockedByPayrollId  String?
-
-  note String?
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  employee           Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, cycleStartDate, cycleEndDate])
-  @@index([employeeId, payCycleType, cycleStartDate, cycleEndDate])
   @@index([employeeId, settlementStatus, cycleStartDate])
   @@index([employeeId, isSettled])
   @@index([payCycleType])
   @@index([settlementStatus])
   @@index([lockedByPayrollId])
   @@index([createdAt])
+  @@index([employeeId, payCycleType, cycleStartDate, cycleEndDate], map: "AdvancePayment_employeeId_payCycleType_cycleStartDate_cycleEndD")
 }
 
 model Payroll {
-  id          String   @id @default(uuid())
-  employeeId  String
-  periodStart DateTime
-  periodEnd   DateTime
-
-  salaryType       SalaryType
-  activePayrollKey String?    @unique
-  grossSalary      Decimal    @db.Decimal(12, 2)
-  standardSalary   Decimal    @default(0) @db.Decimal(12, 2)
-  otTotalHours     Decimal    @default(0) @db.Decimal(8, 2)
-  otHourlyRate     Decimal    @default(0) @db.Decimal(12, 2)
-  otEarnings       Decimal    @default(0) @db.Decimal(12, 2)
-  advanceDeduction Decimal    @default(0) @db.Decimal(12, 2)
-
-  carryForwardApplied   Decimal @default(0) @db.Decimal(12, 2)
-  totalDeduction        Decimal @default(0) @db.Decimal(12, 2)
-  rawFinalSalary        Decimal @default(0) @db.Decimal(12, 2)
-  carryForwardDeduction Decimal @default(0) @db.Decimal(12, 2)
-
-  finalSalary Decimal @db.Decimal(12, 2)
-
-  totalDays   Int
-  workingDays Int
-  presentDays Decimal @db.Decimal(5, 2)
-  absentDays  Decimal @db.Decimal(5, 2)
-  halfDays    Decimal @db.Decimal(5, 2)
-
-  version Int           @default(1)
-  status  PayrollStatus @default(GENERATED)
-
-  isRecalculated      Boolean   @default(false)
-  recalculatedBy      String?
-  recalculatedAt      DateTime?
-  recalculationReason String?
-
-  replacedPayrollId   String?
-  replacedPayroll     Payroll?  @relation("PayrollReplacement", fields: [replacedPayrollId], references: [id])
-  replacementPayrolls Payroll[] @relation("PayrollReplacement")
-
-  lockedAt      DateTime?
-  cancelledAt   DateTime?
-  cancelledById String?
-  cancelReason  String?
-
-  salaryBreakdown     Json
-  attendanceBreakdown Json?
-  advanceBreakdown    Json?
-  overtimeBreakdown   Json?
-
-  employee      Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  payslips      Payslip[]
-  ledgerEntries LedgerEntry[]
-  carryForwards PayrollCarryForward[] @relation("PayrollCarryForwards")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                    String                @id @default(uuid())
+  employeeId            String
+  periodStart           DateTime
+  periodEnd             DateTime
+  salaryType            SalaryType
+  grossSalary           Decimal               @db.Decimal(12, 2)
+  advanceDeduction      Decimal               @default(0) @db.Decimal(12, 2)
+  finalSalary           Decimal               @db.Decimal(12, 2)
+  totalDays             Int
+  workingDays           Int
+  presentDays           Decimal               @db.Decimal(5, 2)
+  absentDays            Decimal               @db.Decimal(5, 2)
+  halfDays              Decimal               @db.Decimal(5, 2)
+  version               Int                   @default(1)
+  status                PayrollStatus         @default(GENERATED)
+  isRecalculated        Boolean               @default(false)
+  recalculatedBy        String?
+  recalculatedAt        DateTime?
+  recalculationReason   String?
+  replacedPayrollId     String?
+  salaryBreakdown       Json
+  attendanceBreakdown   Json?
+  advanceBreakdown      Json?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  carryForwardApplied   Decimal               @default(0) @db.Decimal(12, 2)
+  totalDeduction        Decimal               @default(0) @db.Decimal(12, 2)
+  rawFinalSalary        Decimal               @default(0) @db.Decimal(12, 2)
+  carryForwardDeduction Decimal               @default(0) @db.Decimal(12, 2)
+  lockedAt              DateTime?
+  cancelledAt           DateTime?
+  cancelledById         String?
+  cancelReason          String?
+  standardSalary        Decimal               @default(0) @db.Decimal(12, 2)
+  otTotalHours          Decimal               @default(0) @db.Decimal(8, 2)
+  otHourlyRate          Decimal               @default(0) @db.Decimal(12, 2)
+  otEarnings            Decimal               @default(0) @db.Decimal(12, 2)
+  overtimeBreakdown     Json?
+  activePayrollKey      String?               @unique
+  ledgerEntries         LedgerEntry[]
+  employee              Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  replacedPayroll       Payroll?              @relation("PayrollReplacement", fields: [replacedPayrollId], references: [id])
+  replacementPayrolls   Payroll[]             @relation("PayrollReplacement")
+  carryForwards         PayrollCarryForward[] @relation("PayrollCarryForwards")
+  payslips              Payslip?
 
   @@unique([employeeId, periodStart, periodEnd, version])
   @@index([employeeId, periodStart, periodEnd])
@@ -401,23 +251,18 @@ model Payroll {
 }
 
 model PayrollCarryForward {
-  id              String @id @default(uuid())
+  id              String             @id @default(uuid())
   employeeId      String
   sourcePayrollId String
-
-  amount          Decimal @db.Decimal(12, 2)
-  remainingAmount Decimal @db.Decimal(12, 2)
-
-  cycleStartDate DateTime
-  cycleEndDate   DateTime
-
-  status CarryForwardStatus @default(PENDING)
-
-  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  sourcePayroll Payroll  @relation("PayrollCarryForwards", fields: [sourcePayrollId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  amount          Decimal            @db.Decimal(12, 2)
+  remainingAmount Decimal            @db.Decimal(12, 2)
+  cycleStartDate  DateTime
+  cycleEndDate    DateTime
+  status          CarryForwardStatus @default(PENDING)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  employee        Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  sourcePayroll   Payroll            @relation("PayrollCarryForwards", fields: [sourcePayrollId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([employeeId, status])
@@ -429,44 +274,37 @@ model PayrollCarryForward {
 }
 
 model Payslip {
-  id          String   @id @default(uuid())
-  employeeId  String
-  payrollId   String   @unique
-  periodStart DateTime
-  periodEnd   DateTime
-
-  totalDays   Int
-  presentDays Decimal @db.Decimal(5, 2)
-  absentDays  Decimal @db.Decimal(5, 2)
-  halfDays    Decimal @db.Decimal(5, 2)
-
+  id                String        @id @default(uuid())
+  employeeId        String
+  payrollId         String        @unique
+  periodStart       DateTime
+  periodEnd         DateTime
+  totalDays         Int
+  presentDays       Decimal       @db.Decimal(5, 2)
+  absentDays        Decimal       @db.Decimal(5, 2)
+  halfDays          Decimal       @db.Decimal(5, 2)
   salaryBreakdown   Json
-  standardSalary    Decimal @default(0) @db.Decimal(12, 2)
-  otTotalHours      Decimal @default(0) @db.Decimal(8, 2)
-  otHourlyRate      Decimal @default(0) @db.Decimal(12, 2)
-  otEarnings        Decimal @default(0) @db.Decimal(12, 2)
+  advanceDeduction  Decimal       @db.Decimal(12, 2)
+  finalSalary       Decimal       @db.Decimal(12, 2)
+  payrollVersion    Int
+  isRecalculated    Boolean       @default(false)
+  pdfUrl            String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  standardSalary    Decimal       @default(0) @db.Decimal(12, 2)
+  otTotalHours      Decimal       @default(0) @db.Decimal(8, 2)
+  otHourlyRate      Decimal       @default(0) @db.Decimal(12, 2)
+  otEarnings        Decimal       @default(0) @db.Decimal(12, 2)
   overtimeBreakdown Json?
-  advanceDeduction  Decimal @db.Decimal(12, 2)
-  finalSalary       Decimal @db.Decimal(12, 2)
-
-  payrollVersion Int
-  isRecalculated Boolean @default(false)
-
-  pdfUrl         String?
-  status         PayslipStatus @default(PENDING)
-  pdfGeneratedAt DateTime?
-  errorMessage   String?
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  payroll  Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  status            PayslipStatus @default(PENDING)
+  pdfGeneratedAt    DateTime?
+  errorMessage      String?
+  employee          Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payroll           Payroll       @relation(fields: [payrollId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, periodStart, periodEnd, payrollVersion])
   @@index([employeeId])
   @@index([employeeId, periodStart, periodEnd])
-  @@index([payrollId])
   @@index([periodStart, periodEnd])
   @@index([status])
   @@index([status, createdAt])
@@ -483,11 +321,9 @@ model LedgerEntry {
   credit      Decimal    @default(0) @db.Decimal(12, 2)
   balance     Decimal    @db.Decimal(12, 2)
   date        DateTime
-
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  payroll  Payroll? @relation(fields: [payrollId], references: [id])
-
-  createdAt DateTime @default(now())
+  createdAt   DateTime   @default(now())
+  employee    Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payroll     Payroll?   @relation(fields: [payrollId], references: [id])
 
   @@index([employeeId, date])
   @@index([employeeId, type, date])
@@ -498,32 +334,24 @@ model LedgerEntry {
 }
 
 model AuditLog {
-  id         String  @id @default(uuid())
-  userId     String?
-  employeeId String?
-
-  action AuditAction
-  module String
-
-  entityId String?
-
-  oldData Json?
-  newData Json?
-
+  id          String      @id @default(uuid())
+  userId      String?
+  action      AuditAction
+  module      String
+  oldData     Json?
+  newData     Json?
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+  employeeId  String?
+  entityId    String?
   description String?
   status      String?
-
-  ipAddress  String?
-  userAgent  String?
-  deviceInfo String?
-
-  requestId String?
-  sessionId String?
-
-  user     Employee? @relation("AuditUserLogs", fields: [userId], references: [id])
-  employee Employee? @relation("AuditEmployeeLogs", fields: [employeeId], references: [id])
-
-  createdAt DateTime @default(now())
+  userAgent   String?
+  deviceInfo  String?
+  requestId   String?
+  sessionId   String?
+  employee    Employee?   @relation("AuditEmployeeLogs", fields: [employeeId], references: [id])
+  user        Employee?   @relation("AuditUserLogs", fields: [userId], references: [id])
 
   @@index([userId])
   @@index([employeeId])
@@ -572,9 +400,8 @@ model SystemSetting {
   weekStartsOn       WeekStartsOn @default(MONDAY)
   monthlyPayrollDay  Int?
   autoPayrollEnabled Boolean      @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }
 
 model WorkHourSetting {
@@ -582,15 +409,13 @@ model WorkHourSetting {
   workStartTime     String
   workEndTime       String
   standardMinutes   Int
-  effectiveFromDate DateTime
+  effectiveFromDate DateTime @unique
   isActive          Boolean  @default(true)
   note              String?
   createdById       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([effectiveFromDate])
   @@index([effectiveFromDate])
   @@index([effectiveFromDate, isActive])
   @@index([isActive])
@@ -600,20 +425,19 @@ model WorkHourSetting {
 model SchedulerRun {
   id                 String             @id @default(uuid())
   name               String
+  startedAt          DateTime?
+  completedAt        DateTime?
+  errorMessage       String?
+  metadata           Json?
+  createdAt          DateTime           @default(now())
   status             SchedulerRunStatus @default(PENDING)
   totalEmployees     Int                @default(0)
   processedEmployees Int                @default(0)
   successCount       Int                @default(0)
   skippedCount       Int                @default(0)
   failedCount        Int                @default(0)
-  startedAt          DateTime?
-  completedAt        DateTime?
-  errorMessage       String?
-  metadata           Json?
-  createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
-
-  items SchedulerRunItem[]
+  items              SchedulerRunItem[]
 
   @@index([name])
   @@index([status])
@@ -634,8 +458,7 @@ model SchedulerRunItem {
   errorMessage String?
   payrollId    String?
   createdAt    DateTime               @default(now())
-
-  run SchedulerRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run          SchedulerRun           @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@index([runId])
   @@index([employeeId])
@@ -652,4 +475,115 @@ model WorkerHeartbeat {
   updatedAt  DateTime @updatedAt
 
   @@index([lastSeenAt])
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum SalaryType {
+  MONTHLY
+  WEEKLY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+}
+
+enum AttendanceRequestType {
+  ADD
+  EDIT
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PayrollStatus {
+  GENERATED
+  PAID
+  SUPERSEDED
+  CANCELLED
+}
+
+enum LedgerType {
+  SALARY
+  ADVANCE
+  DEDUCTION
+  ADJUSTMENT
+  OVERTIME
+}
+
+enum WeekStartsOn {
+  MONDAY
+  SUNDAY
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  LOGIN
+  PAYROLL_GENERATE
+  PAYROLL_RECALCULATE
+  ROLE_CHANGE
+  STATUS_CHANGE
+  EXPORT
+  LOGOUT
+  PAYROLL_CANCEL
+  UNAUTHORIZED
+  VALIDATION_FAILED
+  FAILED
+}
+
+enum AdvanceSettlementStatus {
+  UNSETTLED
+  PARTIALLY_SETTLED
+  SETTLED
+  CARRY_FORWARDED
+}
+
+enum CarryForwardStatus {
+  PENDING
+  PARTIALLY_DEDUCTED
+  DEDUCTED
+  CANCELLED
+}
+
+enum SchedulerRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL_SUCCESS
+}
+
+enum SchedulerRunItemStatus {
+  SUCCESS
+  SKIPPED
+  FAILED
+}
+
+enum PayslipStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum DashboardSummaryType {
+  GLOBAL
+  EMPLOYEE
 }

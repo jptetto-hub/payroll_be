@@ -7,6 +7,19 @@ import {
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { PerformanceTimer } from "../../utils/performanceTimer";
+import { CacheService } from "../../utils/cache";
+
+const PAYSLIP_READ_CACHE_PREFIX = "payslip-read";
+const PAYSLIP_READ_CACHE_TTL = 30;
+
+const invalidatePayslipReadCaches = () => {
+  void Promise.all([
+    CacheService.delByPattern(`${PAYSLIP_READ_CACHE_PREFIX}:*`),
+    CacheService.delByPattern("payroll-read:*"),
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+  ]);
+};
 
 const ensureEmployeeAccess = (targetRole: Role, currentRole: Role) => {
   if (currentRole === Role.ADMIN && targetRole !== Role.USER) {
@@ -36,6 +49,7 @@ export class PayslipService {
 
     const payslip = await PayslipRepository.createFromPayroll(payroll);
     timer.checkpoint("payslip upsert");
+    invalidatePayslipReadCaches();
     timer.end();
 
     return payslip;
@@ -65,40 +79,77 @@ export class PayslipService {
         removeOnFail: false,
       },
     );
+    invalidatePayslipReadCaches();
 
     return payslip;
   }
 
   static async list(query: any, authUser: { id: string; role: Role }) {
     const { page, limit, skip, take } = getPagination(query);
-    const { employeeWhere } = resolveEmployeeScope({
+    const { directEmployeeId, employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
+    const cacheKey = CacheService.buildKey(
+      PAYSLIP_READ_CACHE_PREFIX,
+      "list",
+      authUser.role,
+      authUser.id,
+      query.employeeId ?? "all",
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const [payslips, total] = await PayslipRepository.listAll({
       skip,
       take,
+      ...(directEmployeeId && { employeeId: directEmployeeId }),
       employeeWhere,
     });
 
-    return {
+    const result = {
       data: payslips,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, PAYSLIP_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async myPayslips(employeeId: string, query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      PAYSLIP_READ_CACHE_PREFIX,
+      "my",
+      employeeId,
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const [payslips, total] = await Promise.all([
       PayslipRepository.listByEmployee(employeeId, { skip, take }),
       PayslipRepository.countByEmployee(employeeId),
     ]);
 
-    return {
+    const result = {
       data: payslips,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, PAYSLIP_READ_CACHE_TTL);
+
+    return result;
   }
 
   static async getById(id: string, currentUser: { id: string; role: Role }) {
@@ -152,14 +203,31 @@ export class PayslipService {
     ensureEmployeeAccess(employee.role, currentRole);
 
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      PAYSLIP_READ_CACHE_PREFIX,
+      "employee",
+      employeeId,
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const [payslips, total] = await Promise.all([
       PayslipRepository.listByEmployee(employeeId, { skip, take }),
       PayslipRepository.countByEmployee(employeeId),
     ]);
 
-    return {
+    const result = {
       data: payslips,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, PAYSLIP_READ_CACHE_TTL);
+
+    return result;
   }
 }

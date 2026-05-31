@@ -49,7 +49,9 @@ export const authMiddleware = async (
     // Existing bearer-token integrations represent active API clients. The
     // browser uses its explicit interaction heartbeat instead.
     if (sessionToken.source === "bearer") {
-      await AuthSessionService.renew(decoded.sessionId, decoded.id);
+      await AuthSessionService.renew(decoded.sessionId, decoded.id, {
+        alreadyValidated: true,
+      });
     }
 
     next();

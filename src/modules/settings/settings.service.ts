@@ -12,6 +12,8 @@ import { CacheService } from "../../utils/cache";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
+const WORK_HOUR_SETTINGS_READ_CACHE_PREFIX = "work-hour-settings-read";
+const WORK_HOUR_SETTINGS_READ_CACHE_TTL = 60 * 5;
 
 export class SettingsService {
   static async getSettings() {
@@ -61,15 +63,34 @@ export class SettingsService {
 
   static async listWorkHourSettings(query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      WORK_HOUR_SETTINGS_READ_CACHE_PREFIX,
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const [data, total] = await SettingsRepository.listWorkHourSettings({
       skip,
       take,
     });
 
-    return {
+    const result = {
       data,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(
+      cacheKey,
+      result,
+      WORK_HOUR_SETTINGS_READ_CACHE_TTL,
+    );
+
+    return result;
   }
 
   static async createWorkHourSetting(
@@ -108,7 +129,10 @@ export class SettingsService {
       createdById: createdById ?? null,
     });
 
-    await CacheService.delByPattern("work-hours:*");
+    await Promise.all([
+      CacheService.delByPattern("work-hours:*"),
+      CacheService.delByPattern(`${WORK_HOUR_SETTINGS_READ_CACHE_PREFIX}:*`),
+    ]);
 
     return setting;
   }
@@ -162,7 +186,10 @@ export class SettingsService {
       }),
     });
 
-    await CacheService.delByPattern("work-hours:*");
+    await Promise.all([
+      CacheService.delByPattern("work-hours:*"),
+      CacheService.delByPattern(`${WORK_HOUR_SETTINGS_READ_CACHE_PREFIX}:*`),
+    ]);
 
     return setting;
   }
@@ -176,7 +203,10 @@ export class SettingsService {
 
     const setting = await SettingsRepository.deleteWorkHourSetting(id);
 
-    await CacheService.delByPattern("work-hours:*");
+    await Promise.all([
+      CacheService.delByPattern("work-hours:*"),
+      CacheService.delByPattern(`${WORK_HOUR_SETTINGS_READ_CACHE_PREFIX}:*`),
+    ]);
 
     return setting;
   }

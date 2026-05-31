@@ -40,7 +40,7 @@ router.get(
 
 router.get(
   "/salary",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   ReportsController.salary,
 );
 
@@ -52,7 +52,7 @@ router.get(
 
 router.get(
   "/attendance",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   ReportsController.attendance,
 );
 
@@ -64,7 +64,7 @@ router.get(
 
 router.get(
   "/advance",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   ReportsController.advance,
 );
 
@@ -106,7 +106,7 @@ router.get(
 
 router.get(
   "/all-in-one",
-  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   ReportsController.allInOne,
 );
 

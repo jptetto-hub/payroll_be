@@ -8,12 +8,30 @@ import {
   buildCursorPaginationMeta,
   getCursorPagination,
 } from "../../shared/utils/cursor-pagination.util";
-import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
-import { assertAttendanceNotLocked } from "../../shared/payroll/payroll-lock.util";
+import {
+  assertAttendanceNotLocked,
+  isAttendanceDateLockedByPayroll,
+} from "../../shared/payroll/payroll-lock.util";
 import { OvertimeService } from "../../services/overtime.service";
 import { AppError } from "../../shared/utils/app-error";
+import { CacheService } from "../../utils/cache";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+const invalidateAttendanceCaches = () => {
+  void Promise.all([
+    CacheService.delByPattern("attendance-read:*"),
+    CacheService.delByPattern("attendance-requests-read:*"),
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+    CacheService.delByPattern("attendance-summary:*"),
+  ]);
+};
+
+const attendanceReadCacheKey = (
+  section: string,
+  ...parts: Array<string | number | undefined>
+) => CacheService.buildKey("attendance-read", section, ...parts);
 
 const normalizeDate = (date: string) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -162,6 +180,7 @@ const assertNotLockedFromPreloadedPayrolls = (
   date: Date,
   payrolls: {
     employeeId: string;
+    salaryType: "MONTHLY" | "WEEKLY";
     periodStart: Date;
     periodEnd: Date;
   }[],
@@ -169,8 +188,7 @@ const assertNotLockedFromPreloadedPayrolls = (
   const locked = payrolls.some(
     (payroll) =>
       payroll.employeeId === employeeId &&
-      payroll.periodStart <= date &&
-      payroll.periodEnd >= date,
+      isAttendanceDateLockedByPayroll(payroll, date),
   );
 
   if (locked) {
@@ -331,12 +349,16 @@ export class AttendanceService {
       );
     }
 
-    return AttendanceRepository.create({
+    const attendance = await AttendanceRepository.create({
       employeeId: data.employeeId,
       date: attendanceDate,
       status: data.status,
       ...(await buildAttendancePayload(attendanceDate, data)),
     });
+
+    invalidateAttendanceCaches();
+
+    return attendance;
   }
 
   static async bulkAttendance(
@@ -478,6 +500,10 @@ export class AttendanceService {
         ? await AttendanceRepository.createMany(createPayloads)
         : [];
 
+    if (results.length > 0) {
+      invalidateAttendanceCaches();
+    }
+
     const conflicts = [...existingDatesByEmployee.values()].map(
       (item) => `${item.employeeCode}: ${formatDateRanges(item.dates)}`,
     );
@@ -505,24 +531,41 @@ export class AttendanceService {
       throw new Error("USER can view only own attendance");
     }
 
-    const employee = await AttendanceRepository.findEmployee(employeeId);
+    const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = attendanceReadCacheKey(
+      "employee",
+      employeeId,
+      page,
+      limit,
+    );
+    if (currentUserRole !== Role.USER) {
+      const employee =
+        await AttendanceRepository.findEmployeeForRead(employeeId);
 
-    if (!employee) {
-      throw new Error("Employee not found");
+      if (!employee) {
+        throw new Error("Employee not found");
+      }
+
+      ensureAllowedEmployeeAccess(employee.role, currentUserRole);
     }
 
-    ensureAllowedEmployeeAccess(employee.role, currentUserRole);
+    const cached = await CacheService.get<any>(cacheKey);
 
-    const { page, limit, skip, take } = getPagination(query);
+    if (cached) return cached;
+
     const [attendance, total] = await Promise.all([
       AttendanceRepository.listByEmployee(employeeId, { skip, take }),
       AttendanceRepository.countByEmployee(employeeId),
     ]);
 
-    return {
+    const result = {
       data: attendance,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, 30);
+
+    return result;
   }
 
   static async listByRange(
@@ -532,7 +575,9 @@ export class AttendanceService {
     authUser: { id: string; role: Role },
     query: any,
   ) {
-    const { employeeWhere } = resolveEmployeeScope({ authUser, employeeId });
+    if (authUser.role === Role.USER && employeeId !== authUser.id) {
+      throw new Error("USER can view only own attendance");
+    }
 
     const fromDate = normalizeDate(from);
     const toDate = normalizeDate(to);
@@ -540,19 +585,41 @@ export class AttendanceService {
     ensureValidRange(fromDate, toDate);
 
     const { page, limit, skip, take } = getPagination(query);
-    const [attendanceRecords, total] = await Promise.all([
-      AttendanceRepository.listByRange(employeeWhere, fromDate, toDate, {
+    const cacheKey = attendanceReadCacheKey(
+      "range",
+      employeeId,
+      formatDate(fromDate),
+      formatDate(toDate),
+      page,
+      limit,
+    );
+    if (authUser.role !== Role.USER) {
+      const employee =
+        await AttendanceRepository.findEmployeeForRead(employeeId);
+
+      if (!employee) {
+        throw new Error("Employee not found");
+      }
+
+      ensureAllowedEmployeeAccess(employee.role, authUser.role);
+    }
+
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) return cached;
+
+    const [attendanceRecords, total, requests] = await Promise.all([
+      AttendanceRepository.listByRange(employeeId, fromDate, toDate, {
         skip,
         take,
       }),
-      AttendanceRepository.countByRange(employeeWhere, fromDate, toDate),
+      AttendanceRepository.countByRange(employeeId, fromDate, toDate),
+      AttendanceRepository.listLatestRequestsByRange(
+        employeeId,
+        fromDate,
+        toDate,
+      ),
     ]);
-
-    const requests = await AttendanceRepository.listLatestRequestsByRange(
-      employeeWhere,
-      fromDate,
-      toDate,
-    );
 
     const latestRequestMap = new Map<string, any>();
 
@@ -577,7 +644,7 @@ export class AttendanceService {
       };
     });
 
-    return {
+    const result = {
       data,
       pagination: buildPaginationMeta(total, page, limit),
       rangeSummary: {
@@ -589,6 +656,10 @@ export class AttendanceService {
         limit,
       },
     };
+
+    void CacheService.set(cacheKey, result, 30);
+
+    return result;
   }
 
   static async updateAttendance(
@@ -629,7 +700,7 @@ export class AttendanceService {
         : Number((attendance as any).otHours ?? 0),
     });
 
-    return AttendanceRepository.update(id, {
+    const updatedAttendance = await AttendanceRepository.update(id, {
       status: data.status,
       ...(await buildAttendancePayload(attendance.date, {
         checkInTime: hasOwn(data, "checkInTime")
@@ -655,6 +726,10 @@ export class AttendanceService {
             : (attendance as any).otOverrideReason ?? null,
       })),
     });
+
+    invalidateAttendanceCaches();
+
+    return updatedAttendance;
   }
 
   static async deleteAttendance(id: string, currentUserRole: Role) {
@@ -670,7 +745,11 @@ export class AttendanceService {
 
     await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
 
-    return AttendanceRepository.delete(id);
+    const deletedAttendance = await AttendanceRepository.delete(id);
+
+    invalidateAttendanceCaches();
+
+    return deletedAttendance;
   }
 
   static async bulkUpdateAttendance(
@@ -724,7 +803,7 @@ export class AttendanceService {
       OvertimeService.getSettingsForDateRange(minDate, maxDate),
     ]);
 
-    for (const record of records) {
+    const payloadPromises = records.map(async (record) => {
       const attendance = attendanceMap.get(record.attendanceId)!;
 
       ensureAllowedEmployeeAccess(attendance.employee.role, currentUserRole);
@@ -757,7 +836,7 @@ export class AttendanceService {
           : Number((attendance as any).otHours ?? 0),
       });
 
-      normalizedRecords.push({
+      return {
         attendanceId: record.attendanceId,
         status: record.status,
         ...(await buildAttendancePayload(
@@ -789,10 +868,17 @@ export class AttendanceService {
           },
           settings,
         )),
-      });
-    }
+      };
+    });
 
-    return AttendanceRepository.updateMany(normalizedRecords);
+    normalizedRecords.push(...(await Promise.all(payloadPromises)));
+
+    const updatedAttendances =
+      await AttendanceRepository.updateMany(normalizedRecords);
+
+    invalidateAttendanceCaches();
+
+    return updatedAttendances;
   }
 
   static async bulkDeleteAttendance(
@@ -816,16 +902,43 @@ export class AttendanceService {
       }
 
       seen.add(attendanceId);
-
-      const attendance = await AttendanceRepository.findById(attendanceId);
-
-      if (!attendance) {
-        throw new Error(`Attendance record not found: ${attendanceId}`);
-      }
-
-      await assertAttendanceNotLocked(attendance.employeeId, attendance.date);
     }
 
-    return AttendanceRepository.deleteMany(attendanceIds);
+    const attendances =
+      await AttendanceRepository.findManyByIdsForWrite(attendanceIds);
+
+    if (attendances.length !== attendanceIds.length) {
+      const attendanceMap = new Map(
+        attendances.map((attendance) => [attendance.id, attendance]),
+      );
+      const missingId = attendanceIds.find((id) => !attendanceMap.has(id));
+
+      throw new Error(`Attendance record not found: ${missingId}`);
+    }
+
+    const { minDate, maxDate } = getDateBounds(
+      attendances.map((attendance) => attendance.date),
+    );
+    const activePayrolls = await AttendanceRepository.findActivePayrollLocks({
+      employeeIds: [
+        ...new Set(attendances.map((attendance) => attendance.employeeId)),
+      ],
+      minDate,
+      maxDate,
+    });
+
+    for (const attendance of attendances) {
+      assertNotLockedFromPreloadedPayrolls(
+        attendance.employeeId,
+        attendance.date,
+        activePayrolls,
+      );
+    }
+
+    await AttendanceRepository.deleteMany(attendanceIds);
+
+    invalidateAttendanceCaches();
+
+    return attendances;
   }
 }

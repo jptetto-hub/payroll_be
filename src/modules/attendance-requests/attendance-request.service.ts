@@ -11,8 +11,13 @@ import {
   getPagination,
 } from "../../shared/utils/pagination.util";
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
-import { assertAttendanceApprovalNotLocked } from "../../shared/payroll/payroll-lock.util";
+import {
+  assertAttendanceApprovalNotLocked,
+  assertAttendanceRequestNotLocked,
+  isAttendanceDateLockedByPayroll,
+} from "../../shared/payroll/payroll-lock.util";
 import { CacheService } from "../../utils/cache";
+import { AttendanceRepository } from "../attendance/attendance.repository";
 
 const normalizeDate = (date: string) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -155,6 +160,29 @@ const countRequestedStatus = (requests: any[]) => {
   };
 };
 
+const countGroupedStatus = (requests: any[], status: RequestStatus) =>
+  Number(
+    requests.find((item) => item.status === status)?._count ?? 0,
+  );
+
+const attendanceKey = (employeeId: string, date: Date) =>
+  `${employeeId}_${formatDate(date)}`;
+
+const invalidateAttendanceCaches = () => {
+  void Promise.all([
+    CacheService.delByPattern("attendance-read:*"),
+    CacheService.delByPattern("attendance-requests-read:*"),
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+    CacheService.delByPattern("attendance-summary:*"),
+  ]);
+};
+
+const attendanceRequestReadCacheKey = (
+  section: string,
+  ...parts: Array<string | number | undefined>
+) => CacheService.buildKey("attendance-requests-read", section, ...parts);
+
 export class AttendanceRequestService {
   static async createRequest(
     data: {
@@ -217,6 +245,11 @@ export class AttendanceRequestService {
         action: "Attendance request date",
       }),
     );
+    await Promise.all(
+      normalizedDates.map((date) =>
+        assertAttendanceRequestNotLocked(currentUser.id, date),
+      ),
+    );
 
     const pendingRequests =
       await AttendanceRequestRepository.findPendingRequestsByDates(
@@ -234,17 +267,26 @@ export class AttendanceRequestService {
       );
     }
 
+    const existingAttendances =
+      await AttendanceRequestRepository.findAttendancesByDates(
+        currentUser.id,
+        normalizedDates,
+      );
+    const existingAttendanceMap = new Map(
+      existingAttendances.map((attendance) => [
+        attendanceKey(attendance.employeeId, attendance.date),
+        attendance,
+      ]),
+    );
     const records = [];
 
     for (const item of data.requests) {
       const attendanceDate = normalizeDate(item.attendanceDate);
       ensureSundayRequestIsOtOnly(attendanceDate, item);
 
-      const existingAttendance =
-        await AttendanceRequestRepository.findAttendance(
-          currentUser.id,
-          attendanceDate,
-        );
+      const existingAttendance = existingAttendanceMap.get(
+        attendanceKey(currentUser.id, attendanceDate),
+      );
 
       if (
         item.requestType === AttendanceRequestType.ADD &&
@@ -294,7 +336,7 @@ export class AttendanceRequestService {
 
     const result = await AttendanceRequestRepository.createMany(records);
 
-    await CacheService.delByPattern("dashboard-summary:*");
+    invalidateAttendanceCaches();
 
     return result;
   }
@@ -320,39 +362,55 @@ export class AttendanceRequestService {
       throw new Error("from date cannot be greater than to date");
     }
 
-    const allRequests =
-      await AttendanceRequestRepository.myRequestsAll(employeeId);
+    const cacheKey = attendanceRequestReadCacheKey(
+      "my",
+      employeeId,
+      query.from || "all",
+      query.to || "all",
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
 
-    const [rangeRequests, total] = await Promise.all([
+    if (cached) return cached;
+
+    const [statusRows, rangeStatusRows, rangeRequests] = await Promise.all([
+      AttendanceRequestRepository.myRequestStatusCounts(employeeId),
+      AttendanceRequestRepository.myRequestRangeStatusCounts(
+        employeeId,
+        from,
+        to,
+      ),
       AttendanceRequestRepository.myRequestsWithFilter(
         employeeId,
         from,
         to,
         { skip, take },
       ),
-      AttendanceRequestRepository.countMyRequestsWithFilter(
-        employeeId,
-        from,
-        to,
-      ),
     ]);
 
-    const allGrouped = groupByStatus(allRequests);
+    const total = rangeStatusRows.reduce(
+      (sum, item) => sum + Number(item._count ?? 0),
+      0,
+    );
     const rangeGrouped = groupByStatus(rangeRequests);
 
-    return {
+    const result = {
       data: {
         overallCount: {
-          total: allRequests.length,
-          pending: allGrouped.pending.length,
-          approved: allGrouped.approved.length,
-          rejected: allGrouped.rejected.length,
+          total: statusRows.reduce(
+            (sum, item) => sum + Number(item._count ?? 0),
+            0,
+          ),
+          pending: countGroupedStatus(statusRows, RequestStatus.PENDING),
+          approved: countGroupedStatus(statusRows, RequestStatus.APPROVED),
+          rejected: countGroupedStatus(statusRows, RequestStatus.REJECTED),
         },
         rangeCount: {
           total,
-          pending: rangeGrouped.pending.length,
-          approved: rangeGrouped.approved.length,
-          rejected: rangeGrouped.rejected.length,
+          pending: countGroupedStatus(rangeStatusRows, RequestStatus.PENDING),
+          approved: countGroupedStatus(rangeStatusRows, RequestStatus.APPROVED),
+          rejected: countGroupedStatus(rangeStatusRows, RequestStatus.REJECTED),
         },
         pending: rangeGrouped.pending,
         approved: rangeGrouped.approved,
@@ -360,6 +418,10 @@ export class AttendanceRequestService {
       },
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, 30);
+
+    return result;
   }
 
   static async pendingRequests(query: {
@@ -387,21 +449,46 @@ export class AttendanceRequestService {
 
     const filters: {
       employeeWhere?: Prisma.EmployeeWhereInput;
+      employeeId?: string;
       from?: Date;
       to?: Date;
     } = {
       employeeWhere,
     };
 
+    if (authUser.role === Role.USER) {
+      filters.employeeId = authUser.id;
+      delete filters.employeeWhere;
+    } else if (
+      authUser.role === Role.SUPER_ADMIN &&
+      query.employeeId &&
+      query.employeeId !== "all"
+    ) {
+      filters.employeeId = query.employeeId;
+      delete filters.employeeWhere;
+    }
+
     if (from && to) {
       filters.from = from;
       filters.to = to;
     }
 
-    const overallPendingCount =
-      await AttendanceRequestRepository.pendingRequestsAll(employeeWhere);
+    const cacheKey = attendanceRequestReadCacheKey(
+      "pending",
+      authUser.role,
+      authUser.id,
+      query.employeeId || "scope",
+      query.from || "all",
+      query.to || "all",
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
 
-    const [rangeRequests, total] = await Promise.all([
+    if (cached) return cached;
+
+    const [overallPendingCount, rangeRequests, total] = await Promise.all([
+      AttendanceRequestRepository.pendingRequestsAll(filters),
       AttendanceRequestRepository.pendingRequestsWithFilter(filters, {
         skip,
         take,
@@ -411,7 +498,7 @@ export class AttendanceRequestService {
 
     const statusCounts = countRequestedStatus(rangeRequests);
 
-    return {
+    const result = {
       data: {
         overallPendingCount,
         employeePendingCount: query.employeeId ? overallPendingCount : 0,
@@ -421,6 +508,10 @@ export class AttendanceRequestService {
       },
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, 30);
+
+    return result;
   }
 
   static async decisionRequests(
@@ -468,25 +559,54 @@ export class AttendanceRequestService {
         rejectionReason: data.rejectionReason,
       });
 
-      await Promise.all([
-        CacheService.delByPattern("dashboard-summary:*"),
-        CacheService.delByPattern("attendance-summary:*"),
-      ]);
+      invalidateAttendanceCaches();
 
       return result;
     }
 
+    const attendanceDates = requests.map((request) => request.attendanceDate);
+    const minDate = new Date(
+      Math.min(...attendanceDates.map((date) => date.getTime())),
+    );
+    const maxDate = new Date(
+      Math.max(...attendanceDates.map((date) => date.getTime())),
+    );
+    const [currentAttendances, activePayrolls] = await Promise.all([
+      AttendanceRepository.findByEmployeeAndDates(
+        requests.map((request) => ({
+          employeeId: request.employeeId,
+          date: request.attendanceDate,
+        })),
+      ),
+      AttendanceRepository.findActivePayrollLocks({
+        employeeIds: [...new Set(requests.map((request) => request.employeeId))],
+        minDate,
+        maxDate,
+      }),
+    ]);
+    const currentAttendanceMap = new Map(
+      currentAttendances.map((attendance) => [
+        attendanceKey(attendance.employeeId, attendance.date),
+        attendance,
+      ]),
+    );
+
     for (const request of requests) {
-      await assertAttendanceApprovalNotLocked(
-        request.employeeId,
-        request.attendanceDate,
+      const hasLockedPayroll = activePayrolls.some(
+        (payroll) =>
+          payroll.employeeId === request.employeeId &&
+          isAttendanceDateLockedByPayroll(payroll, request.attendanceDate),
       );
 
-      const currentAttendance =
-        await AttendanceRequestRepository.findAttendance(
-          request.employeeId,
-          request.attendanceDate,
+      if (hasLockedPayroll) {
+        throw new Error(
+          "Cannot approve attendance request because payroll already exists for this attendance period. Cancel or recalculate payroll first.",
         );
+      }
+
+      const currentAttendance = currentAttendanceMap.get(
+        attendanceKey(request.employeeId, request.attendanceDate),
+      );
 
       if (request.requestType === "ADD" && currentAttendance) {
         throw new Error(
@@ -512,14 +632,11 @@ export class AttendanceRequestService {
     }
 
     const result = await AttendanceRequestRepository.approveMany({
-      requestIds: uniqueIds,
+      requests,
       approvedById,
     });
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("attendance-summary:*"),
-    ]);
+    invalidateAttendanceCaches();
 
     return result;
   }
@@ -595,10 +712,7 @@ export class AttendanceRequestService {
       requestedOtOverrideReason: request.requestedOtOverrideReason,
     });
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("attendance-summary:*"),
-    ]);
+    invalidateAttendanceCaches();
 
     return result;
   }
@@ -624,10 +738,7 @@ export class AttendanceRequestService {
       rejectionReason,
     });
 
-    await Promise.all([
-      CacheService.delByPattern("dashboard-summary:*"),
-      CacheService.delByPattern("attendance-summary:*"),
-    ]);
+    invalidateAttendanceCaches();
 
     return result;
   }
@@ -657,6 +768,11 @@ export class AttendanceRequestService {
       throw new Error("Only pending request can be deleted");
     }
 
-    return AttendanceRequestRepository.deleteOwnPendingRequest(requestId);
+    const deletedRequest =
+      await AttendanceRequestRepository.deleteOwnPendingRequest(requestId);
+
+    invalidateAttendanceCaches();
+
+    return deletedRequest;
   }
 }

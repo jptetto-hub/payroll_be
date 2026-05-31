@@ -10,6 +10,25 @@ import { env } from "../../config/env";
 
 const EMPLOYEE_OPTIONS_CACHE_TTL = 60 * 5;
 const EMPLOYEE_OPTIONS_CACHE_PREFIX = "employee-options:v2";
+const EMPLOYEE_LIST_CACHE_TTL = 30;
+const EMPLOYEE_LIST_CACHE_PREFIX = "employee-list";
+const EMPLOYEE_DETAIL_CACHE_TTL = 60;
+const EMPLOYEE_DETAIL_CACHE_PREFIX = "employee-detail";
+
+const invalidateEmployeeReadCaches = () => {
+  void Promise.all([
+    CacheService.delByPattern("employee-options:*"),
+    CacheService.delByPattern(`${EMPLOYEE_LIST_CACHE_PREFIX}:*`),
+    CacheService.delByPattern(`${EMPLOYEE_DETAIL_CACHE_PREFIX}:*`),
+    CacheService.delByPattern("salary-history-read:*"),
+    CacheService.delByPattern("payroll-read:*"),
+    CacheService.delByPattern("payslip-read:*"),
+    CacheService.delByPattern("advance-read:*"),
+    CacheService.delByPattern("ledger-read:*"),
+    CacheService.delByPattern("dashboard:*"),
+    CacheService.delByPattern("dashboard-summary:*"),
+  ]);
+};
 
 export class EmployeeService {
   static async createEmployee(data: any, currentUserRole: Role) {
@@ -54,16 +73,28 @@ export class EmployeeService {
       joiningDate: new Date(data.joiningDate),
     });
 
-    await Promise.all([
-      CacheService.delByPattern("employee-options:*"),
-      CacheService.delByPattern("dashboard-summary:*"),
-    ]);
+    invalidateEmployeeReadCaches();
 
     return employee;
   }
 
   static async listEmployees(query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const cacheKey = CacheService.buildKey(
+      EMPLOYEE_LIST_CACHE_PREFIX,
+      query.search?.trim().toLowerCase() || "all",
+      query.status || "all",
+      query.role || "all",
+      query.salaryType || "all",
+      query.department?.trim().toLowerCase() || "all",
+      page,
+      limit,
+    );
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
 
     const [employees, total] = await EmployeeRepository.list({
       search: query.search,
@@ -75,10 +106,14 @@ export class EmployeeService {
       take,
     });
 
-    return {
+    const result = {
       data: employees,
       pagination: buildPaginationMeta(total, page, limit),
     };
+
+    void CacheService.set(cacheKey, result, EMPLOYEE_LIST_CACHE_TTL);
+
+    return result;
   }
 
   static async employeeOptions(query: any) {
@@ -112,17 +147,35 @@ export class EmployeeService {
       role: employee.role,
     }));
 
-    await CacheService.set(key, options, EMPLOYEE_OPTIONS_CACHE_TTL);
+    void CacheService.set(key, options, EMPLOYEE_OPTIONS_CACHE_TTL);
 
     return options;
   }
 
-  static async getEmployeeById(id: string) {
+  static async getEmployeeById(
+    id: string,
+    authUser?: {
+      id: string;
+      role: Role;
+    },
+  ) {
+    if (authUser?.role === Role.USER && authUser.id !== id) {
+      throw new Error("USER can view only own profile");
+    }
+    const cacheKey = CacheService.buildKey(EMPLOYEE_DETAIL_CACHE_PREFIX, id);
+    const cached = await CacheService.get<any>(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
     const employee = await EmployeeRepository.findById(id);
 
     if (!employee) {
       throw new Error("Employee not found");
     }
+
+    void CacheService.set(cacheKey, employee, EMPLOYEE_DETAIL_CACHE_TTL);
 
     return employee;
   }
@@ -156,10 +209,7 @@ export class EmployeeService {
       ...(data.joiningDate && { joiningDate: new Date(data.joiningDate) }),
     });
 
-    await Promise.all([
-      CacheService.delByPattern("employee-options:*"),
-      CacheService.delByPattern("dashboard-summary:*"),
-    ]);
+    invalidateEmployeeReadCaches();
 
     return updatedEmployee;
   }
@@ -184,10 +234,7 @@ export class EmployeeService {
 
     const updatedEmployee = await EmployeeRepository.updateStatus(id, status);
 
-    await Promise.all([
-      CacheService.delByPattern("employee-options:*"),
-      CacheService.delByPattern("dashboard-summary:*"),
-    ]);
+    invalidateEmployeeReadCaches();
 
     return updatedEmployee;
   }
@@ -209,7 +256,7 @@ export class EmployeeService {
 
     const updatedEmployee = await EmployeeRepository.updateRole(id, role);
 
-    await CacheService.delByPattern("employee-options:*");
+    invalidateEmployeeReadCaches();
 
     return updatedEmployee;
   }

@@ -13,6 +13,28 @@ type SessionTokenPayload = {
 };
 
 const sessionKey = (sessionId: string) => `auth:session:${sessionId}`;
+const SESSION_REDIS_TIMEOUT_MS = Number(
+  process.env.SESSION_REDIS_TIMEOUT_MS || 500,
+);
+
+const withRedisTimeout = <T>(promise: Promise<T>): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timeoutRef = setTimeout(
+      () => reject(new Error("Session store operation timed out")),
+      SESSION_REDIS_TIMEOUT_MS,
+    );
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutRef);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutRef);
+        reject(error);
+      },
+    );
+  });
 
 const parseCookies = (header?: string) => {
   const cookies = new Map<string, string>();
@@ -53,11 +75,13 @@ export class AuthSessionService {
       },
     );
 
-    await redis.set(
-      sessionKey(sessionId),
-      payload.id,
-      "EX",
-      env.authIdleTimeoutSeconds,
+    await withRedisTimeout(
+      redis.set(
+        sessionKey(sessionId),
+        payload.id,
+        "EX",
+        env.authIdleTimeoutSeconds,
+      ),
     );
 
     return { sessionId, token };
@@ -90,26 +114,40 @@ export class AuthSessionService {
   }
 
   static async isActive(sessionId: string, employeeId: string) {
-    return (await redis.get(sessionKey(sessionId))) === employeeId;
+    return (
+      (await withRedisTimeout(redis.get(sessionKey(sessionId)))) === employeeId
+    );
   }
 
-  static async renew(sessionId: string, employeeId: string) {
-    if (!(await this.isActive(sessionId, employeeId))) {
+  static async renew(
+    sessionId: string,
+    employeeId: string,
+    options?: { alreadyValidated?: boolean },
+  ) {
+    if (
+      !options?.alreadyValidated &&
+      !(await this.isActive(sessionId, employeeId))
+    ) {
       return false;
     }
 
-    await redis.expire(sessionKey(sessionId), env.authIdleTimeoutSeconds);
+    await withRedisTimeout(
+      redis.expire(sessionKey(sessionId), env.authIdleTimeoutSeconds),
+    );
     return true;
   }
 
   static async revoke(sessionId?: string) {
     if (sessionId) {
-      await redis.del(sessionKey(sessionId));
+      await withRedisTimeout(redis.del(sessionKey(sessionId)));
     }
   }
 
   static async remainingSeconds(sessionId: string) {
-    return Math.max(await redis.ttl(sessionKey(sessionId)), 0);
+    return Math.max(
+      await withRedisTimeout(redis.ttl(sessionKey(sessionId))),
+      0,
+    );
   }
 
   static setCookie(res: Response, token: string) {

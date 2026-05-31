@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from "express";
 import { PayrollService } from "./payroll.service";
 import { AuditLogService } from "../audit-logs/audit-log.service";
+import { SchedulerRunStatus } from "@prisma/client";
+import { SchedulerRepository } from "../scheduler/scheduler.repository";
+import { payrollSchedulerQueue } from "../../jobs/payrollScheduler.queue";
+import { PayrollRepository } from "./payroll.repository";
 
 type PayrollParams = {
   id: string;
@@ -13,17 +17,92 @@ type EmployeeParams = {
 export class PayrollController {
   static async generate(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await PayrollService.generate(req.body, req.user.role, {
-        userId: req.user.id,
-        ipAddress: req.ip,
+      const existingRun = await SchedulerRepository.findActiveSinglePayrollRun({
+        employeeId: req.body.employeeId,
+        periodStart: req.body.periodStart,
+        periodEnd: req.body.periodEnd,
       });
 
-      res.status(201).json({
+      if (existingRun) {
+        return res.status(202).json({
+          success: true,
+          message: "Payroll generation is already queued",
+          data: {
+            jobId: existingRun.id,
+            status: existingRun.status,
+            reused: true,
+          },
+        });
+      }
+
+      const existingPayroll = await PayrollRepository.findActivePayroll(
+        req.body.employeeId,
+        new Date(`${req.body.periodStart}T00:00:00.000Z`),
+        new Date(`${req.body.periodEnd}T00:00:00.000Z`),
+      );
+
+      if (existingPayroll) {
+        return res.status(409).json({
+          success: false,
+          message: "Active payroll already exists for this employee and period",
+          data: {
+            payrollId: existingPayroll.id,
+            status: existingPayroll.status,
+          },
+        });
+      }
+
+      const run = await SchedulerRepository.createRun({
+        name: "MANUAL_SINGLE_PAYROLL_GENERATION",
+        status: SchedulerRunStatus.PENDING,
+        totalEmployees: 1,
+        metadata: {
+          mode: "BACKGROUND",
+          employeeId: req.body.employeeId,
+          periodStart: req.body.periodStart,
+          periodEnd: req.body.periodEnd,
+          triggeredBy: req.user.id,
+          triggeredAt: new Date().toISOString(),
+        },
+      });
+
+      try {
+        await payrollSchedulerQueue.add(
+          "single-payroll-generation",
+          {
+            runId: run.id,
+            employeeId: req.body.employeeId,
+            periodStart: req.body.periodStart,
+            periodEnd: req.body.periodEnd,
+            currentUserRole: req.user.role,
+            userId: req.user.id,
+            ipAddress: req.ip,
+          },
+          {
+            jobId: run.id,
+            attempts: 1,
+            removeOnComplete: false,
+            removeOnFail: false,
+          },
+        );
+      } catch (error) {
+        await SchedulerRepository.updateRun(run.id, {
+          status: SchedulerRunStatus.FAILED,
+          completedAt: new Date(),
+          errorMessage:
+            error instanceof Error ? error.message : "Failed to enqueue job",
+        });
+
+        throw error;
+      }
+
+      res.status(202).json({
         success: true,
-        message: result.carryForward
-          ? "Payroll generated successfully with balance carried to the next payroll cycle"
-          : "Payroll generated successfully",
-        data: result,
+        message: "Payroll generation queued",
+        data: {
+          jobId: run.id,
+          status: run.status,
+        },
       });
     } catch (error) {
       next(error);
@@ -135,6 +214,7 @@ export class PayrollController {
           reason: req.body.reason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,

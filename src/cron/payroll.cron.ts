@@ -74,6 +74,17 @@ export const startPayrollCron = async () => {
           return;
         }
 
+        const pendingPayrollCount =
+          await SchedulerService.countPendingCurrentCyclePayrolls(salaryTypes);
+
+        if (pendingPayrollCount === 0) {
+          logger.info(
+            { salaryTypes },
+            "Payroll cron skipped: all current payroll cycles are already handled",
+          );
+          return;
+        }
+
         const run = await SchedulerRepository.createRun({
           name: "CRON_PAYROLL_SCHEDULER",
           status: SchedulerRunStatus.PENDING,

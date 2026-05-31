@@ -20,6 +20,7 @@ export class EmployeeController {
         module: "EMPLOYEE",
         newData: employee,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
 
       res.status(201).json({
@@ -66,7 +67,10 @@ export class EmployeeController {
     next: NextFunction,
   ) {
     try {
-      const employee = await EmployeeService.getEmployeeById(req.params.id);
+      const employee = await EmployeeService.getEmployeeById(
+        req.params.id,
+        req.user,
+      );
 
       res.json({
         success: true,
@@ -95,6 +99,7 @@ export class EmployeeController {
         module: "EMPLOYEE",
         newData: employee,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -127,6 +132,7 @@ export class EmployeeController {
           status: employee.status,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
 
       res.json({
@@ -160,6 +166,7 @@ export class EmployeeController {
           role: employee.role,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
 
       res.json({

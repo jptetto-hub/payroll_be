@@ -23,14 +23,21 @@ router.get(
 router.get(
   "/recent-payroll",
   authMiddleware,
+  cacheForSeconds(30),
   DashboardController.recentPayroll,
 );
 router.get(
   "/recent-activities",
   authMiddleware,
+  cacheForSeconds(30),
   DashboardController.recentActivities,
 );
-router.get("/analytics", authMiddleware, DashboardController.analytics);
+router.get(
+  "/analytics",
+  authMiddleware,
+  cacheForSeconds(60),
+  DashboardController.analytics,
+);
 router.get("/", authMiddleware, DashboardController.summary);
 
 export default router;

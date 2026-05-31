@@ -1,4 +1,4 @@
-import { prisma } from "../../config/prisma";
+import { prisma, readPrisma } from "../../config/prisma";
 
 export class SalaryHistoryRepository {
   static create(data: {
@@ -41,11 +41,25 @@ export class SalaryHistoryRepository {
     });
   }
 
+  static findEmployeeForRead(employeeId: string) {
+    return readPrisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        salaryType: true,
+        status: true,
+        joiningDate: true,
+      },
+    });
+  }
+
   static listByEmployee(
     employeeId: string,
     pagination?: { skip: number; take: number },
   ) {
-    return prisma.salaryHistory.findMany({
+    return readPrisma.salaryHistory.findMany({
       where: { employeeId },
       ...(pagination && {
         skip: pagination.skip,
@@ -56,7 +70,7 @@ export class SalaryHistoryRepository {
   }
 
   static countByEmployee(employeeId: string) {
-    return prisma.salaryHistory.count({
+    return readPrisma.salaryHistory.count({
       where: { employeeId },
     });
   }
@@ -74,7 +88,7 @@ export class SalaryHistoryRepository {
   }
 
   static getCurrentSalary(employeeId: string) {
-    return prisma.salaryHistory.findFirst({
+    return readPrisma.salaryHistory.findFirst({
       where: {
         employeeId,
         effectiveFrom: {
@@ -88,7 +102,7 @@ export class SalaryHistoryRepository {
   }
 
   static resolveSalaryByDate(employeeId: string, date: Date) {
-    return prisma.salaryHistory.findFirst({
+    return readPrisma.salaryHistory.findFirst({
       where: {
         employeeId,
         effectiveFrom: {

@@ -78,6 +78,9 @@ type SalaryPreviewEmployee = {
 type SalaryPreviewOptions = {
   employee?: SalaryPreviewEmployee;
   skipActivePayrollSnapshot?: boolean;
+  recalculationPayrollSnapshot?: {
+    advanceBreakdown?: unknown;
+  };
 };
 
 const buildPreviewFromPayrollSnapshot = (
@@ -256,7 +259,8 @@ export class SalaryCalculationService {
       joiningDate: employee.joiningDate,
     });
 
-    const activePayrollSnapshot = options.skipActivePayrollSnapshot
+    const activePayrollSnapshot =
+      options.skipActivePayrollSnapshot || options.recalculationPayrollSnapshot
       ? null
       : await SalaryCalculationRepository.findActivePayrollSnapshot(
           data.employeeId,
@@ -281,6 +285,11 @@ export class SalaryCalculationService {
       return snapshotPreview;
     }
 
+    const recalculationAdvanceBreakdown =
+      (options.recalculationPayrollSnapshot?.advanceBreakdown as any) ?? null;
+    const recalculationCarryForwardSummary =
+      recalculationAdvanceBreakdown?.carryForwardApplied ?? null;
+
     const [
       salaryHistories,
       attendanceRecords,
@@ -302,19 +311,27 @@ export class SalaryCalculationService {
         weeklyCarryInSunday ?? effectivePeriodStart,
         effectivePeriodEnd,
       ),
-      SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
-        data.employeeId,
-        periodStart,
-        periodEnd,
-      ),
-      PayrollCarryForwardRepository.findPendingByEmployee(
-        data.employeeId,
-        periodStart,
-      ),
-      SalaryCalculationRepository.getUnprocessedEarlierAdvances(
-        data.employeeId,
-        periodStart,
-      ),
+      recalculationAdvanceBreakdown
+        ? Promise.resolve(recalculationAdvanceBreakdown.advances ?? [])
+        : SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
+            data.employeeId,
+            periodStart,
+            periodEnd,
+          ),
+      recalculationCarryForwardSummary
+        ? Promise.resolve(
+            recalculationCarryForwardSummary.pendingCarryForwards ?? [],
+          )
+        : PayrollCarryForwardRepository.findPendingByEmployee(
+            data.employeeId,
+            periodStart,
+          ),
+      options.recalculationPayrollSnapshot
+        ? Promise.resolve([])
+        : SalaryCalculationRepository.getUnprocessedEarlierAdvances(
+            data.employeeId,
+            periodStart,
+          ),
     ]);
     timer.checkpoint("payroll inputs fetch");
 
@@ -352,6 +369,10 @@ export class SalaryCalculationService {
     );
 
     const salaryTimeline = [salaryBeforePeriod, ...salaryChangesInsidePeriod];
+    const cycleWorkingDays = Math.max(
+      getWorkingDatesBetween(periodStart, periodEnd).length,
+      1,
+    );
 
     const attendanceMap = new Map(
       attendanceRecords.map((item) => [formatDate(item.date), item]),
@@ -413,7 +434,7 @@ export class SalaryCalculationService {
             1,
           );
           const dailyRate =
-            (Number(salary.salaryAmount) / workingDates.length) / dailyHours;
+            (Number(salary.salaryAmount) / cycleWorkingDays) / dailyHours;
           const dailyOtEarnings = roundMoney(dailyRate * dailyOtHours);
 
           otHours = roundMoney(otHours + dailyOtHours);
@@ -449,7 +470,7 @@ export class SalaryCalculationService {
           1,
         );
         const dailyRate =
-          (Number(salary.salaryAmount) / Math.max(workingDays, 1)) /
+          (Number(salary.salaryAmount) / cycleWorkingDays) /
           dailyHours;
         const dailyOtEarnings = roundMoney(dailyRate * dailyOtHours);
 
@@ -458,10 +479,9 @@ export class SalaryCalculationService {
         otWeightedRateTotal += dailyRate * dailyOtHours;
       }
 
-      const perDaySalary =
-        employee.salaryType === SalaryType.MONTHLY
-          ? Number(salary.salaryAmount) / workingDays
-          : Number(salary.salaryAmount) / workingDays;
+      // Salary amount represents the full monthly/weekly cycle rate. When a
+      // history changes mid-cycle, each segment earns only its share of that cycle.
+      const perDaySalary = Number(salary.salaryAmount) / cycleWorkingDays;
 
       const segmentGrossSalary = roundMoney(perDaySalary * attendedDays);
 
@@ -525,7 +545,7 @@ export class SalaryCalculationService {
     );
 
     const invalidAdvances = advances.filter(
-      (item) => item.payCycleType !== employee.salaryType,
+      (item: any) => item.payCycleType !== employee.salaryType,
     );
 
     if (invalidAdvances.length > 0) {
@@ -535,7 +555,7 @@ export class SalaryCalculationService {
     }
 
     const hasInvalidRemainingAmount = advances.some(
-      (item) => Number(item.remainingAmount) < 0,
+      (item: any) => Number(item.remainingAmount) < 0,
     );
 
     if (hasInvalidRemainingAmount) {
@@ -543,7 +563,10 @@ export class SalaryCalculationService {
     }
 
     const advanceDeduction = roundMoney(
-      advances.reduce((sum, item) => sum + Number(item.remainingAmount), 0),
+      advances.reduce(
+        (sum: number, item: any) => sum + Number(item.remainingAmount),
+        0,
+      ),
     );
 
     if (advanceDeduction < 0) {
@@ -561,7 +584,7 @@ export class SalaryCalculationService {
     );
     let carryForwardApplied = 0;
     const appliedCarryForwards = [];
-    const eligibleCarryForwards = pendingCarryForwards.map((item) => ({
+    const eligibleCarryForwards = pendingCarryForwards.map((item: any) => ({
       ...item,
       amount: Number(item.amount),
       remainingAmount: Number(item.remainingAmount),

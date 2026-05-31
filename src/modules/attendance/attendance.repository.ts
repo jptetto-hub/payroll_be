@@ -22,6 +22,21 @@ export class AttendanceRepository {
     });
   }
 
+  static findEmployeeForRead(employeeId: string) {
+    return readPrisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        employeeCode: true,
+        name: true,
+        role: true,
+        status: true,
+        salaryType: true,
+        joiningDate: true,
+      },
+    });
+  }
+
   static findEmployeesByIds(employeeIds: string[]) {
     return prisma.employee.findMany({
       where: {
@@ -110,6 +125,9 @@ export class AttendanceRepository {
     minDate: Date;
     maxDate: Date;
   }) {
+    const maxLockDate = new Date(params.maxDate);
+    maxLockDate.setUTCDate(maxLockDate.getUTCDate() + 1);
+
     return prisma.payroll.findMany({
       where: {
         employeeId: {
@@ -119,7 +137,7 @@ export class AttendanceRepository {
           in: [PayrollStatus.GENERATED, PayrollStatus.PAID],
         },
         periodStart: {
-          lte: params.maxDate,
+          lte: maxLockDate,
         },
         periodEnd: {
           gte: params.minDate,
@@ -127,6 +145,7 @@ export class AttendanceRepository {
       },
       select: {
         employeeId: true,
+        salaryType: true,
         periodStart: true,
         periodEnd: true,
       },
@@ -345,14 +364,14 @@ export class AttendanceRepository {
   }
 
   static listByRange(
-    employeeWhere: Prisma.EmployeeWhereInput,
+    employeeId: string,
     from: Date,
     to: Date,
     pagination?: { skip: number; take: number },
   ) {
     return readPrisma.attendance.findMany({
       where: {
-        employee: employeeWhere,
+        employeeId,
         date: {
           gte: from,
           lte: to,
@@ -362,31 +381,18 @@ export class AttendanceRepository {
         skip: pagination.skip,
         take: pagination.take,
       }),
-      include: {
-        employee: {
-          select: {
-            id: true,
-            employeeCode: true,
-            name: true,
-            phone: true,
-            department: true,
-            designation: true,
-            salaryType: true,
-          },
-        },
-      },
       orderBy: { date: "asc" },
     });
   }
 
   static countByRange(
-    employeeWhere: Prisma.EmployeeWhereInput,
+    employeeId: string,
     from: Date,
     to: Date,
   ) {
     return readPrisma.attendance.count({
       where: {
-        employee: employeeWhere,
+        employeeId,
         date: {
           gte: from,
           lte: to,
@@ -396,17 +402,40 @@ export class AttendanceRepository {
   }
 
   static listLatestRequestsByRange(
-    employeeWhere: Prisma.EmployeeWhereInput,
+    employeeId: string,
     from: Date,
     to: Date,
   ) {
     return readPrisma.attendanceRequest.findMany({
       where: {
-        employee: employeeWhere,
+        employeeId,
         attendanceDate: {
           gte: from,
           lte: to,
         },
+      },
+      select: {
+        id: true,
+        employeeId: true,
+        attendanceDate: true,
+        oldStatus: true,
+        requestedStatus: true,
+        requestType: true,
+        reason: true,
+        status: true,
+        requestedById: true,
+        approvedById: true,
+        approvedAt: true,
+        rejectionReason: true,
+        requestedCheckInTime: true,
+        requestedCheckOutTime: true,
+        requestedOtStartTime: true,
+        requestedOtEndTime: true,
+        requestedOtHours: true,
+        requestedOtManualOverride: true,
+        requestedOtOverrideReason: true,
+        createdAt: true,
+        updatedAt: true,
       },
       orderBy: [
         {
@@ -498,12 +527,12 @@ export class AttendanceRepository {
   }
 
   static deleteMany(attendanceIds: string[]) {
-    return prisma.$transaction(
-      attendanceIds.map((id) =>
-        prisma.attendance.delete({
-          where: { id },
-        }),
-      ),
-    );
+    return prisma.attendance.deleteMany({
+      where: {
+        id: {
+          in: attendanceIds,
+        },
+      },
+    });
   }
 }

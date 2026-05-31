@@ -11,7 +11,7 @@ export class DashboardController {
     try {
       if (
         (req.user.role === Role.ADMIN || req.user.role === Role.SUPER_ADMIN) &&
-        !req.query.employeeId
+        (!req.query.employeeId || req.query.employeeId === "all")
       ) {
         const range = parseDashboardSummaryRange(req.query);
         const data = await DashboardSummaryService.getOrRefreshGlobalSummary(

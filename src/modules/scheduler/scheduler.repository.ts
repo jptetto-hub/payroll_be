@@ -291,6 +291,48 @@ export class SchedulerRepository {
     });
   }
 
+  static findActiveSinglePayrollRun(params: {
+    employeeId: string;
+    periodStart: string;
+    periodEnd: string;
+  }) {
+    return prisma.schedulerRun.findFirst({
+      where: {
+        name: "MANUAL_SINGLE_PAYROLL_GENERATION",
+        status: {
+          in: [SchedulerRunStatus.PENDING, SchedulerRunStatus.RUNNING],
+        },
+        AND: [
+          {
+            metadata: {
+              path: ["employeeId"],
+              equals: params.employeeId,
+            },
+          },
+          {
+            metadata: {
+              path: ["periodStart"],
+              equals: params.periodStart,
+            },
+          },
+          {
+            metadata: {
+              path: ["periodEnd"],
+              equals: params.periodEnd,
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+  }
+
   static markStaleActiveRunsFailed(params: {
     staleBefore: Date;
     errorMessage: string;

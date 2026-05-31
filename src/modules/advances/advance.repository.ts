@@ -95,11 +95,14 @@ export class AdvanceRepository {
   static listAll(params: {
     skip: number;
     take: number;
+    employeeId?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     isSettled?: boolean;
   }) {
     const where = {
-      ...(params.employeeWhere && { employee: params.employeeWhere }),
+      ...(params.employeeId
+        ? { employeeId: params.employeeId }
+        : params.employeeWhere && { employee: params.employeeWhere }),
       ...(params.isSettled !== undefined && { isSettled: params.isSettled }),
     };
 
@@ -167,7 +170,7 @@ export class AdvanceRepository {
     cycleStartDate: Date,
     cycleEndDate: Date,
   ) {
-    return prisma.advancePayment.findMany({
+    return readPrisma.advancePayment.findMany({
       where: {
         employeeId,
         cycleStartDate,

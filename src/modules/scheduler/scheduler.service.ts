@@ -137,6 +137,21 @@ export class SchedulerService {
     return result.count;
   }
 
+  static async countPendingCurrentCyclePayrolls(salaryTypes?: SalaryType[]) {
+    const setting = await SchedulerRepository.getSystemSetting();
+    const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
+    const currentDate = todayUtc();
+    const eligibleSalaryTypes = salaryTypes?.length
+      ? salaryTypes
+      : [SalaryType.MONTHLY, SalaryType.WEEKLY];
+    const targetPeriods = eligibleSalaryTypes.map((salaryType) => ({
+      salaryType,
+      ...getLatestCompletedPeriod(salaryType, currentDate, weekStartsOn),
+    }));
+
+    return SchedulerRepository.countPendingActiveEmployees(targetPeriods);
+  }
+
   static async runPayrollScheduler(
     triggeredBy: "CRON" | "MANUAL" = "CRON",
     options: SchedulerRunOptions = {},

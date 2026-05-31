@@ -23,6 +23,7 @@ export class SalaryHistoryController {
         module: "SALARY_HISTORY",
         newData: salaryHistory,
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
 
       res.status(201).json({
@@ -79,6 +80,7 @@ export class SalaryHistoryController {
           correctionReason: req.body.correctionReason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,
@@ -110,6 +112,7 @@ export class SalaryHistoryController {
           reason: req.body.reason,
         },
         ipAddress: req.ip,
+        skipRelationValidation: true,
       });
       res.json({
         success: true,

@@ -52,6 +52,12 @@ export class EmployeeRepository {
     skip: number;
     take: number;
   }) {
+    const normalizedSearch = params.search?.trim().toUpperCase();
+    const searchedSalaryType =
+      normalizedSearch === SalaryType.MONTHLY ||
+      normalizedSearch === SalaryType.WEEKLY
+        ? normalizedSearch
+        : undefined;
     const where = {
       ...(params.status && { status: params.status }),
       ...(params.role && { role: params.role }),
@@ -73,6 +79,7 @@ export class EmployeeRepository {
               mode: "insensitive" as const,
             },
           },
+          ...(searchedSalaryType ? [{ salaryType: searchedSalaryType }] : []),
         ],
       }),
     };

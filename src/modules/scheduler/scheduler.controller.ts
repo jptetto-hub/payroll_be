@@ -25,6 +25,17 @@ export class SchedulerController {
         });
       }
 
+      const pendingPayrollCount =
+        await SchedulerService.countPendingCurrentCyclePayrolls();
+
+      if (pendingPayrollCount === 0) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "All current payroll cycles are already handled. There is no payroll to generate.",
+        });
+      }
+
       const run = await SchedulerRepository.createRun({
         name: "MANUAL_PAYROLL_SCHEDULER",
         status: SchedulerRunStatus.PENDING,

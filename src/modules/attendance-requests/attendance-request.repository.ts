@@ -38,6 +38,17 @@ export class AttendanceRequestRepository {
     });
   }
 
+  static findAttendancesByDates(employeeId: string, dates: Date[]) {
+    return prisma.attendance.findMany({
+      where: {
+        employeeId,
+        date: {
+          in: dates,
+        },
+      },
+    });
+  }
+
   static findPendingRequest(employeeId: string, date: Date) {
     return prisma.attendanceRequest.findFirst({
       where: {
@@ -227,13 +238,9 @@ export class AttendanceRequestRepository {
       requestedOtOverrideReason?: string | null;
     }[],
   ) {
-    return prisma.$transaction(
-      records.map((record) =>
-        prisma.attendanceRequest.create({
-          data: stripUndefined(record) as any,
-        }),
-      ),
-    );
+    return prisma.attendanceRequest.createManyAndReturn({
+      data: records.map((record) => stripUndefined(record) as any),
+    });
   }
 
   static deleteOwnPendingRequest(requestId: string) {
@@ -254,22 +261,45 @@ export class AttendanceRequestRepository {
     });
   }
 
-  static myRequestsAll(employeeId: string) {
-    return prisma.attendanceRequest.findMany({
+  static myRequestStatusCounts(employeeId: string) {
+    return readPrisma.attendanceRequest.groupBy({
+      by: ["status"],
       where: { employeeId },
-      select: {
-        id: true,
-        status: true,
-        requestedStatus: true,
-      },
+      _count: true,
     });
   }
 
-  static pendingRequestsAll(employeeWhere?: Prisma.EmployeeWhereInput) {
+  static myRequestRangeStatusCounts(
+    employeeId: string,
+    from?: Date,
+    to?: Date,
+  ) {
+    return readPrisma.attendanceRequest.groupBy({
+      by: ["status"],
+      where: {
+        employeeId,
+        ...(from &&
+          to && {
+            attendanceDate: {
+              gte: from,
+              lte: to,
+            },
+          }),
+      },
+      _count: true,
+    });
+  }
+
+  static pendingRequestsAll(params: {
+    employeeWhere?: Prisma.EmployeeWhereInput;
+    employeeId?: string;
+  }) {
     return readPrisma.attendanceRequest.count({
       where: {
         status: "PENDING",
-        ...(employeeWhere && { employee: employeeWhere }),
+        ...(params.employeeId
+          ? { employeeId: params.employeeId }
+          : params.employeeWhere && { employee: params.employeeWhere }),
       },
     });
   }
@@ -310,24 +340,10 @@ export class AttendanceRequestRepository {
     });
   }
 
-  static countMyRequestsWithFilter(employeeId: string, from?: Date, to?: Date) {
-    return readPrisma.attendanceRequest.count({
-      where: {
-        employeeId,
-        ...(from &&
-          to && {
-            attendanceDate: {
-              gte: from,
-              lte: to,
-            },
-          }),
-      },
-    });
-  }
-
   static pendingRequestsWithFilter(
     params: {
       employeeWhere?: Prisma.EmployeeWhereInput;
+      employeeId?: string;
       from?: Date;
       to?: Date;
     },
@@ -336,7 +352,9 @@ export class AttendanceRequestRepository {
     return readPrisma.attendanceRequest.findMany({
       where: {
         status: "PENDING",
-        ...(params.employeeWhere && { employee: params.employeeWhere }),
+        ...(params.employeeId
+          ? { employeeId: params.employeeId }
+          : params.employeeWhere && { employee: params.employeeWhere }),
         ...(params.from &&
           params.to && {
             attendanceDate: {
@@ -391,13 +409,16 @@ export class AttendanceRequestRepository {
 
   static countPendingRequestsWithFilter(params: {
     employeeWhere?: Prisma.EmployeeWhereInput;
+    employeeId?: string;
     from?: Date;
     to?: Date;
   }) {
     return readPrisma.attendanceRequest.count({
       where: {
         status: "PENDING",
-        ...(params.employeeWhere && { employee: params.employeeWhere }),
+        ...(params.employeeId
+          ? { employeeId: params.employeeId }
+          : params.employeeWhere && { employee: params.employeeWhere }),
         ...(params.from &&
           params.to && {
             attendanceDate: {
@@ -422,19 +443,35 @@ export class AttendanceRequestRepository {
     });
   }
 
-  static approveMany(params: { requestIds: string[]; approvedById: string }) {
-    return prisma.$transaction(async (tx) => {
-      const requests = await tx.attendanceRequest.findMany({
-        where: {
-          id: {
-            in: params.requestIds,
-          },
-        },
-      });
-
-      const attendanceResults = [];
-
-      for (const request of requests) {
+  static async approveMany(params: {
+    requests: {
+      id: string;
+      employeeId: string;
+      attendanceDate: Date;
+      requestedStatus: AttendanceStatus;
+      requestedCheckInTime: Date | null;
+      requestedCheckOutTime: Date | null;
+      requestedOtStartTime: Date | null;
+      requestedOtEndTime: Date | null;
+      requestedOtHours: Prisma.Decimal | null;
+      requestedOtManualOverride: boolean;
+      requestedOtOverrideReason: string | null;
+    }[];
+    approvedById: string;
+  }) {
+    const dates = params.requests.map((request) => request.attendanceDate);
+    const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+    const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+    const settings = await OvertimeService.getSettingsForDateRange(
+      minDate,
+      maxDate,
+    );
+    const preparedAttendances = await Promise.all(
+      params.requests.map(async (request) => {
+        const setting = OvertimeService.resolveSettingFromList(
+          settings,
+          request.attendanceDate,
+        );
         const ot = await OvertimeService.calculateForAttendance(stripUndefined({
           attendanceDate: request.attendanceDate,
           checkInTime: request.requestedCheckInTime,
@@ -447,9 +484,18 @@ export class AttendanceRequestRepository {
               : Number(request.requestedOtHours ?? 0),
           otManualOverride: request.requestedOtManualOverride,
           otOverrideReason: request.requestedOtOverrideReason,
+          setting,
         }) as any);
 
-        const attendance = await tx.attendance.upsert({
+        return {
+          request,
+          ot,
+        };
+      }),
+    );
+    const approvedAt = new Date();
+    const transactions = preparedAttendances.map(({ request, ot }) =>
+      prisma.attendance.upsert({
           where: {
             employeeId_date: {
               employeeId: request.employeeId,
@@ -480,29 +526,29 @@ export class AttendanceRequestRepository {
           otOverrideReason: ot.otOverrideReason,
           otBreakdown: ot.otBreakdown,
         }) as any,
-        });
+      }),
+    );
 
-        attendanceResults.push(attendance);
-      }
-
-      const updatedRequests = await tx.attendanceRequest.updateMany({
+    const results = await prisma.$transaction([
+      ...transactions,
+      prisma.attendanceRequest.updateMany({
         where: {
           id: {
-            in: params.requestIds,
+            in: params.requests.map((request) => request.id),
           },
         },
         data: {
           status: "APPROVED",
           approvedById: params.approvedById,
-          approvedAt: new Date(),
+          approvedAt,
         },
-      });
+      }),
+    ]);
 
-      return {
-        attendanceResults,
-        updatedRequests,
-      };
-    });
+    return {
+      attendanceResults: results.slice(0, -1),
+      updatedRequests: results.at(-1),
+    };
   }
 
   static rejectMany(params: {

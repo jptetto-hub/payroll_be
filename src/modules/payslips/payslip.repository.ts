@@ -134,10 +134,13 @@ export class PayslipRepository {
   static listAll(params: {
     skip: number;
     take: number;
+    employeeId?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
   }) {
     const where = {
-      ...(params.employeeWhere && { employee: params.employeeWhere }),
+      ...(params.employeeId
+        ? { employeeId: params.employeeId }
+        : params.employeeWhere && { employee: params.employeeWhere }),
       payroll: {
         is: {
           status: {

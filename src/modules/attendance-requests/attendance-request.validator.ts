@@ -60,6 +60,8 @@ export const attendanceRequestDateFilterSchema = z.object({
     from: z.string().regex(dateOnlyRegex).optional(),
     to: z.string().regex(dateOnlyRegex).optional(),
     employeeId: z.union([z.string().uuid(), z.literal("all")]).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
   }),
 });
 

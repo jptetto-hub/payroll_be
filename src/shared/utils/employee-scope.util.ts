@@ -16,6 +16,7 @@ export const resolveEmployeeScope = ({
   if (!employeeId) {
     if (authUser.role === Role.USER) {
       return {
+        directEmployeeId: authUser.id,
         employeeWhere: {
           id: authUser.id,
         },
@@ -67,6 +68,7 @@ export const resolveEmployeeScope = ({
   }
 
   return {
+    directEmployeeId: employeeId,
     employeeWhere: {
       id: employeeId,
     },

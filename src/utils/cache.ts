@@ -2,6 +2,26 @@ import { redis } from "../config/redis";
 import { logger } from "../config/logger";
 
 const isCacheEnabled = () => process.env.ENABLE_REDIS_CACHE === "true";
+const CACHE_TIMEOUT_MS = Number(process.env.REDIS_CACHE_TIMEOUT_MS || 100);
+
+const withCacheTimeout = <T>(promise: Promise<T>): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const timeoutRef = setTimeout(
+      () => reject(new Error("Redis cache operation timed out")),
+      CACHE_TIMEOUT_MS,
+    );
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutRef);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutRef);
+        reject(error);
+      },
+    );
+  });
 
 export class CacheService {
   static async get<T>(key: string): Promise<T | null> {
@@ -10,7 +30,9 @@ export class CacheService {
     }
 
     try {
-      const cached = await redis.get(key);
+      if (redis.status !== "ready") return null;
+
+      const cached = await withCacheTimeout(redis.get(key));
 
       if (!cached) {
         return null;
@@ -33,7 +55,11 @@ export class CacheService {
     }
 
     try {
-      await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
+      if (redis.status !== "ready") return;
+
+      await withCacheTimeout(
+        redis.set(key, JSON.stringify(value), "EX", ttlSeconds),
+      );
     } catch (error) {
       logger.warn({ key, error }, "Redis cache set failed");
     }
@@ -45,7 +71,9 @@ export class CacheService {
     }
 
     try {
-      await redis.del(key);
+      if (redis.status !== "ready") return;
+
+      await withCacheTimeout(redis.del(key));
     } catch (error) {
       logger.warn({ key, error }, "Redis cache delete failed");
     }
@@ -57,21 +85,19 @@ export class CacheService {
     }
 
     try {
+      if (redis.status !== "ready") return;
+
       let cursor = "0";
 
       do {
-        const [nextCursor, keys] = await redis.scan(
-          cursor,
-          "MATCH",
-          pattern,
-          "COUNT",
-          100,
+        const [nextCursor, keys] = await withCacheTimeout(
+          redis.scan(cursor, "MATCH", pattern, "COUNT", 100),
         );
 
         cursor = nextCursor;
 
         if (keys.length > 0) {
-          await redis.del(...keys);
+          await withCacheTimeout(redis.del(...keys));
         }
       } while (cursor !== "0");
     } catch (error) {

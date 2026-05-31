@@ -28,4 +28,10 @@ router.get(
   LedgerController.payrollLedger,
 );
 
+router.get(
+  "/:id",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
+  LedgerController.detail,
+);
+
 export default router;

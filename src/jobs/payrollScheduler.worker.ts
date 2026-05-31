@@ -1,6 +1,7 @@
 import { Worker } from "bullmq";
 import { redisConnection } from "./payrollScheduler.queue";
 import { PayrollSchedulerProcessor } from "./payrollScheduler.processor";
+import { SinglePayrollGenerationProcessor } from "./singlePayrollGeneration.processor";
 import { logger } from "../config/logger";
 import { Sentry } from "../config/sentry";
 
@@ -14,6 +15,10 @@ export const payrollSchedulerWorker = new Worker(
         job.data.triggeredByType,
         job.data.salaryTypes,
       );
+    }
+
+    if (job.name === "single-payroll-generation") {
+      return SinglePayrollGenerationProcessor.process(job.data);
     }
 
     throw new Error(`Unknown payroll scheduler job: ${job.name}`);

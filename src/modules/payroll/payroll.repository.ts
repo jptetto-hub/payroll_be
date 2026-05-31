@@ -4,6 +4,33 @@ import { CacheService } from "../../utils/cache";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
+const payrollListSelect = {
+  id: true,
+  employeeId: true,
+  periodStart: true,
+  periodEnd: true,
+  salaryType: true,
+  grossSalary: true,
+  standardSalary: true,
+  otTotalHours: true,
+  otEarnings: true,
+  advanceDeduction: true,
+  finalSalary: true,
+  version: true,
+  status: true,
+  isRecalculated: true,
+  createdAt: true,
+  employee: {
+    select: {
+      id: true,
+      employeeCode: true,
+      name: true,
+      department: true,
+      designation: true,
+      salaryType: true,
+    },
+  },
+} satisfies Prisma.PayrollSelect;
 
 const buildDateRange = (search: string) => {
   const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.test(search);
@@ -143,6 +170,7 @@ export class PayrollRepository {
   static list(params: {
     take: number;
     cursor?: string;
+    employeeId?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     status?: PayrollStatus;
     search?: string;
@@ -255,7 +283,9 @@ export class PayrollRepository {
     }
 
     const where: Prisma.PayrollWhereInput = {
-      ...(params.employeeWhere && { employee: params.employeeWhere }),
+      ...(params.employeeId
+        ? { employeeId: params.employeeId }
+        : params.employeeWhere && { employee: params.employeeWhere }),
       ...(params.status && { status: params.status }),
       ...(params.from && {
         periodStart: {
@@ -282,38 +312,34 @@ export class PayrollRepository {
           }
         : {}),
       orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        employeeId: true,
-        periodStart: true,
-        periodEnd: true,
-        salaryType: true,
-        grossSalary: true,
-        standardSalary: true,
-        otTotalHours: true,
-        otEarnings: true,
-        advanceDeduction: true,
-        finalSalary: true,
-        version: true,
-        status: true,
-        isRecalculated: true,
-        createdAt: true,
-        employee: {
-          select: {
-            id: true,
-            employeeCode: true,
-            name: true,
-            department: true,
-            designation: true,
-            salaryType: true,
-          },
-        },
-      },
+      select: payrollListSelect,
     });
   }
 
   static findById(id: string) {
     return prisma.payroll.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            name: true,
+            phone: true,
+            department: true,
+            designation: true,
+            salaryType: true,
+            joiningDate: true,
+          },
+        },
+        payslips: true,
+        ledgerEntries: true,
+      },
+    });
+  }
+
+  static findByIdForRead(id: string) {
+    return readPrisma.payroll.findUnique({
       where: { id },
       include: {
         employee: {
@@ -345,6 +371,7 @@ export class PayrollRepository {
         take: pagination.take,
       }),
       orderBy: { createdAt: "desc" },
+      select: payrollListSelect,
     });
   }
 
@@ -373,6 +400,10 @@ export class PayrollRepository {
   static recalculatePayroll(params: {
     oldPayrollId: string;
     newPayrollData: any;
+    applyState?: (
+      tx: any,
+      result: { oldPayroll: any; newPayroll: any },
+    ) => Promise<Record<string, unknown> | void>;
   }) {
     return prisma.$transaction(async (tx) => {
       const oldPayroll = await tx.payroll.update({
@@ -396,10 +427,14 @@ export class PayrollRepository {
           },
         },
       });
+      const appliedState = params.applyState
+        ? await params.applyState(tx, { oldPayroll, newPayroll })
+        : undefined;
 
       return {
         oldPayroll,
         newPayroll,
+        ...(appliedState ?? {}),
       };
     });
   }

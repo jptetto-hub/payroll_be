@@ -9,6 +9,10 @@ type PayrollParams = {
   payrollId: string;
 };
 
+type LedgerParams = {
+  id: string;
+};
+
 export class LedgerController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
@@ -19,6 +23,7 @@ export class LedgerController {
         message: "Ledger entries fetched successfully",
         data: result.data,
         pagination: result.pagination,
+        summary: result.summary,
       });
     } catch (error) {
       next(error);
@@ -34,6 +39,25 @@ export class LedgerController {
         message: "My ledger fetched successfully",
         data: result.data,
         pagination: result.pagination,
+        summary: result.summary,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async detail(
+    req: Request<LedgerParams>,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const entry = await LedgerService.detail(req.params.id, req.user);
+
+      res.json({
+        success: true,
+        message: "Ledger entry fetched successfully",
+        data: entry,
       });
     } catch (error) {
       next(error);
@@ -57,6 +81,7 @@ export class LedgerController {
         message: "Employee ledger fetched successfully",
         data: result.data,
         pagination: result.pagination,
+        summary: result.summary,
       });
     } catch (error) {
       next(error);
