@@ -4,12 +4,11 @@ import { SchedulerRepository } from "../modules/scheduler/scheduler.repository";
 import { SchedulerService } from "../modules/scheduler/scheduler.service";
 import { payrollSchedulerQueue } from "../jobs/payrollScheduler.queue";
 import { logger } from "../config/logger";
+import { getConfiguredTimezone } from "../config/timezone";
 
-const CRON_TIMEZONE = process.env.PAYROLL_CRON_TIMEZONE || "Asia/Kolkata";
-
-function getDueSalaryTypes(date = new Date()) {
+function getDueSalaryTypes(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: CRON_TIMEZONE,
+    timeZone: timezone,
     weekday: "short",
     year: "numeric",
     month: "numeric",
@@ -36,11 +35,16 @@ function getDueSalaryTypes(date = new Date()) {
 }
 
 export const startPayrollCron = async () => {
+  const setting = await SchedulerRepository.getSystemSetting();
+  const cronTimezone = getConfiguredTimezone(
+    process.env.PAYROLL_CRON_TIMEZONE || setting?.organizationTimezone,
+  );
+
   cron.schedule(
     "59 23 * * *",
     async () => {
       try {
-        const salaryTypes = getDueSalaryTypes();
+        const salaryTypes = getDueSalaryTypes(new Date(), cronTimezone);
 
         if (salaryTypes.length === 0) {
           return;
@@ -118,12 +122,12 @@ export const startPayrollCron = async () => {
       }
     },
     {
-      timezone: CRON_TIMEZONE,
+      timezone: cronTimezone,
     },
   );
 
   logger.info(
-    { timezone: CRON_TIMEZONE },
+    { timezone: cronTimezone },
     "Payroll cron scheduled for Saturday and month-end at 11:59 PM",
   );
 };

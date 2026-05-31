@@ -400,6 +400,7 @@ model SystemSetting {
   weekStartsOn       WeekStartsOn @default(MONDAY)
   monthlyPayrollDay  Int?
   autoPayrollEnabled Boolean      @default(true)
+  organizationTimezone String     @default("UTC")
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 }

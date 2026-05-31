@@ -12,6 +12,7 @@ import {
 } from "../../shared/utils/pagination.util";
 import { PerformanceTimer } from "../../utils/performanceTimer";
 import { logger } from "../../config/logger";
+import { getBusinessDate } from "../../shared/time/business-date.util";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 
@@ -66,13 +67,7 @@ const getWeeklyEndSaturday = (weekStart: Date) => {
   return addDays(weekStart, diff);
 };
 
-const todayUtc = () => {
-  const now = new Date();
-
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-};
+const todayUtc = () => getBusinessDate();
 
 type SchedulerRunOptions = {
   runId?: string;

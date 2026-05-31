@@ -18,6 +18,7 @@ import {
 } from "../../shared/payroll/payroll-lock.util";
 import { CacheService } from "../../utils/cache";
 import { AttendanceRepository } from "../attendance/attendance.repository";
+import { getBusinessDate } from "../../shared/time/business-date.util";
 
 const normalizeDate = (date: string) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);
@@ -44,12 +45,7 @@ const ensureDateOnOrAfterJoining = (params: {
 };
 
 const ensureNotFutureDate = (date: Date) => {
-  const today = new Date();
-  const todayUtc = new Date(
-    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
-  );
-
-  if (date > todayUtc) {
+  if (date > getBusinessDate()) {
     throw new Error("Future attendance request is not allowed");
   }
 };

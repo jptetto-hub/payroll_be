@@ -8,6 +8,7 @@ import {
 import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAdvanceCycleNotLocked } from "../../shared/payroll/payroll-lock.util";
 import { CacheService } from "../../utils/cache";
+import { getBusinessDate } from "../../shared/time/business-date.util";
 
 const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -47,12 +48,7 @@ const ensureDateOnOrAfterJoining = (params: {
 };
 
 const ensureNotFutureDate = (date: Date) => {
-  const now = new Date();
-  const todayUtc = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-
-  if (date > todayUtc) {
+  if (date > getBusinessDate()) {
     throw new Error("Future advance date is not allowed");
   }
 };
@@ -340,10 +336,7 @@ export class AdvanceService {
     const projectedBalanceCarriedOnward = roundMoney(
       selectedCycleOverflow + earlierBalanceRemaining,
     );
-    const now = new Date();
-    const today = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const today = getBusinessDate();
     const attendanceState =
       cycle.cycleStartDate > today
         ? "FUTURE_CYCLE"

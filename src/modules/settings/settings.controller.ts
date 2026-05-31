@@ -38,6 +38,29 @@ export class SettingsController {
     }
   }
 
+  static async updateTimezone(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await SettingsService.updateSettings({
+        organizationTimezone: req.body.organizationTimezone,
+      });
+
+      await AuditLogService.log({
+        userId: req.user.id,
+        action: "UPDATE",
+        module: "SETTINGS",
+        newData: { organizationTimezone: result.organizationTimezone },
+        ipAddress: req.ip,
+      });
+      res.json({
+        success: true,
+        message: "Organization timezone updated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async listWorkHourSettings(
     req: Request,
     res: Response,

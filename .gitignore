@@ -4,5 +4,7 @@ dist-ssr
 *.local
 # Keep environment variables out of version control
 .env
+backups/*.dump
+backups/*.sha256
 
 /src/generated/prisma

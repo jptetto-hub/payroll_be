@@ -15,6 +15,7 @@ import {
 import { OvertimeService } from "../../services/overtime.service";
 import { AppError } from "../../shared/utils/app-error";
 import { CacheService } from "../../utils/cache";
+import { getBusinessDate } from "../../shared/time/business-date.util";
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
@@ -58,12 +59,7 @@ const ensureDateOnOrAfterJoining = (params: {
 };
 
 const ensureNotFutureDate = (date: Date) => {
-  const today = new Date();
-  const todayUtc = new Date(
-    Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
-  );
-
-  if (date > todayUtc) {
+  if (date > getBusinessDate()) {
     throw new Error("Future attendance is not allowed");
   }
 };

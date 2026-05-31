@@ -6,6 +6,7 @@ import { allowRoles } from "../../middlewares/rbac.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import {
   createWorkHourSettingSchema,
+  updateOrganizationTimezoneSchema,
   updateSettingsSchema,
   updateWorkHourSettingSchema,
 } from "./settings.validator";
@@ -16,6 +17,14 @@ const router = Router();
 router.use(authMiddleware);
 
 router.get("/", allowRoles(Role.SUPER_ADMIN), SettingsController.get);
+
+router.patch(
+  "/timezone",
+  allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
+  validate(updateOrganizationTimezoneSchema),
+  SettingsController.updateTimezone,
+);
 
 router.get(
   "/work-hours",

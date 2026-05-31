@@ -1,11 +1,28 @@
 import { z } from "zod";
 import { WeekStartsOn } from "@prisma/client";
+import { getValidTimezone } from "../../config/timezone";
+
+const timezoneSchema = z.string().min(1).max(100).refine((value) => {
+  try {
+    getValidTimezone(value, "UTC");
+    return true;
+  } catch {
+    return false;
+  }
+}, "organizationTimezone must be a valid IANA timezone");
 
 export const updateSettingsSchema = z.object({
   body: z.object({
     weekStartsOn: z.nativeEnum(WeekStartsOn).optional(),
     monthlyPayrollDay: z.number().int().min(1).max(31).nullable().optional(),
     autoPayrollEnabled: z.boolean().optional(),
+    organizationTimezone: timezoneSchema.optional(),
+  }),
+});
+
+export const updateOrganizationTimezoneSchema = z.object({
+  body: z.object({
+    organizationTimezone: timezoneSchema,
   }),
 });
 

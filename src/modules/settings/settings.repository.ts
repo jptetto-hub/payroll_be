@@ -12,6 +12,7 @@ export class SettingsRepository {
         id: DEFAULT_SETTINGS_ID,
         weekStartsOn: "MONDAY",
         autoPayrollEnabled: true,
+        organizationTimezone: "UTC",
       },
     });
   }
@@ -20,6 +21,7 @@ export class SettingsRepository {
     weekStartsOn?: "MONDAY" | "SUNDAY";
     monthlyPayrollDay?: number | null;
     autoPayrollEnabled?: boolean;
+    organizationTimezone?: string;
   }) {
     return prisma.systemSetting.upsert({
       where: { id: DEFAULT_SETTINGS_ID },
@@ -29,6 +31,7 @@ export class SettingsRepository {
         weekStartsOn: data.weekStartsOn ?? "MONDAY",
         monthlyPayrollDay: data.monthlyPayrollDay ?? null,
         autoPayrollEnabled: data.autoPayrollEnabled ?? true,
+        organizationTimezone: data.organizationTimezone ?? "UTC",
       },
     });
   }
