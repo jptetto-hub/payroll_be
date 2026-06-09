@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { WeekStartsOn } from "@prisma/client";
 import { getValidTimezone } from "../../config/timezone";
+import { configurablePermissionKeys } from "./role-permissions";
 
 const timezoneSchema = z.string().min(1).max(100).refine((value) => {
   try {
@@ -23,6 +24,19 @@ export const updateSettingsSchema = z.object({
 export const updateOrganizationTimezoneSchema = z.object({
   body: z.object({
     organizationTimezone: timezoneSchema,
+  }),
+});
+
+const rolePermissionSchema = z.object(
+  Object.fromEntries(
+    configurablePermissionKeys.map((permission) => [permission, z.boolean()]),
+  ) as Record<(typeof configurablePermissionKeys)[number], z.ZodBoolean>,
+);
+
+export const updateRolePermissionsSchema = z.object({
+  body: z.object({
+    ADMIN: rolePermissionSchema,
+    USER: rolePermissionSchema,
   }),
 });
 

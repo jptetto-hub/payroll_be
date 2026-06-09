@@ -172,7 +172,27 @@ R2_AUTO_BACKUP_ENABLED=true
 R2_BACKUP_CRON="0 2 * * *"
 APP_TIMEZONE=UTC
 R2_BACKUP_CRON_TIMEZONE=
+R2_BACKUP_RUN_ON_STARTUP=true
 ```
+
+Cron jobs run from the worker process, not the API process. In local
+development, keep this command running:
+
+```bash
+cd backend
+npm run dev:worker
+```
+
+In production, keep the worker process alive with PM2/systemd/Docker:
+
+```bash
+npm run worker
+```
+
+When `R2_BACKUP_RUN_ON_STARTUP=true`, worker startup checks R2 for today's
+`daily/` backup. If it is missing, the worker creates a scheduled backup
+immediately. This protects local machines and production restarts from missing
+the exact 2:00 AM cron window.
 
 For deployments where the worker is not continuously running, use an external
 VPS cron instead. Do not enable both schedulers:

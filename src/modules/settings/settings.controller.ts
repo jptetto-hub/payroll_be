@@ -3,6 +3,61 @@ import { SettingsService } from "./settings.service";
 import { AuditLogService } from "../audit-logs/audit-log.service";
 
 export class SettingsController {
+  static async getMyPermissions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const permissions = await SettingsService.getRolePermissions();
+
+      res.json({
+        success: true,
+        message: "Role permissions fetched successfully",
+        data:
+          req.user.role === "SUPER_ADMIN"
+            ? Object.fromEntries(
+                Object.keys(permissions.ADMIN).map((key) => [key, true]),
+              )
+            : permissions[req.user.role],
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getRolePermissions(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await SettingsService.getRolePermissions();
+
+      res.json({
+        success: true,
+        message: "Role permissions fetched successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateRolePermissions(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await SettingsService.updateRolePermissions(req.body);
+
+      await AuditLogService.log({
+        userId: req.user.id,
+        action: "UPDATE",
+        module: "ROLE_PERMISSIONS",
+        newData: result,
+        ipAddress: req.ip,
+      });
+
+      res.json({
+        success: true,
+        message: "Role permissions updated successfully",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async get(req: Request, res: Response, next: NextFunction) {
     try {
       const result = await SettingsService.getSettings();

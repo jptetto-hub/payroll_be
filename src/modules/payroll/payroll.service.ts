@@ -124,7 +124,7 @@ const buildAdvanceBreakdown = (
 
       return {
         ...snapshotAdvance,
-        deductedAmount: Number(advance.remainingAmount),
+        deductedAmount: Number(advance.__deductedAmount ?? advance.remainingAmount),
         previousRemainingAmount: advance.remainingAmount,
         previousSettledAmount: advance.settledAmount ?? 0,
         previousCarryForwardAmount: advance.carryForwardAmount ?? 0,
@@ -146,7 +146,10 @@ const settleAdvancesForPayroll = async (
 
   for (const advance of calculation.advanceSummary.advances) {
     const remainingAmount = Number(advance.remainingAmount);
-    const settledAmount = Math.min(remainingAmount, availableForAdvance);
+    const requestedSettlement = Number(advance.__deductedAmount ?? remainingAmount);
+    const settledAmount = roundMoney(
+      Math.min(remainingAmount, requestedSettlement, availableForAdvance),
+    );
     const newRemaining = roundMoney(remainingAmount - settledAmount);
     const restoreBeforeSettlement = Boolean(advance.__restoreBeforeSettlement);
     const previousSettledAmount = Number(advance.__previousSettledAmount ?? 0);
@@ -519,6 +522,17 @@ export class PayrollService {
           payroll.id,
         );
 
+        if (preview.advanceSummary.manualDeductionId) {
+          await tx.advanceManualDeduction.update({
+            where: {
+              id: preview.advanceSummary.manualDeductionId,
+            },
+            data: {
+              lockedByPayrollId: payroll.id,
+            },
+          });
+        }
+
         for (const item of preview.carryForwardSummary.appliedCarryForwards) {
           const newRemaining = roundMoney(
             item.remainingAmount - item.appliedAmount,
@@ -799,10 +813,19 @@ export class PayrollService {
     ensureEmployeeAccess(employee.role, currentUserRole);
 
     const { page, limit, skip, take } = getPagination(query);
+    const from = query.from ? parseDateOnly(String(query.from)) : undefined;
+    const to = query.to ? parseDateOnly(String(query.to)) : undefined;
+
+    if (from && to && from > to) {
+      throw new Error("From date cannot be greater than To date");
+    }
+
     const cacheKey = CacheService.buildKey(
       PAYROLL_READ_CACHE_PREFIX,
       "employee",
       employeeId,
+      from ? formatDate(from) : "any-from",
+      to ? formatDate(to) : "any-to",
       page,
       limit,
     );
@@ -813,8 +836,8 @@ export class PayrollService {
     }
 
     const [payrolls, total] = await Promise.all([
-      PayrollRepository.listByEmployee(employeeId, { skip, take }),
-      PayrollRepository.countByEmployee(employeeId),
+      PayrollRepository.listByEmployee(employeeId, { skip, take }, { from, to }),
+      PayrollRepository.countByEmployee(employeeId, { from, to }),
     ]);
 
     const result = {
@@ -970,6 +993,15 @@ export class PayrollService {
       });
 
       const unlockedAdvances = await tx.advancePayment.updateMany({
+        where: {
+          lockedByPayrollId: payroll.id,
+        },
+        data: {
+          lockedByPayrollId: null,
+        },
+      });
+
+      await tx.advanceManualDeduction.updateMany({
         where: {
           lockedByPayrollId: payroll.id,
         },
@@ -1287,18 +1319,40 @@ export class PayrollService {
             });
           }
 
-          await settleAdvancesForPayroll(tx, preview, newPayroll.id);
-
-          await tx.advancePayment.updateMany({
+          await tx.advanceManualDeduction.updateMany({
             where: {
-              employeeId: oldPayroll.employeeId,
-              cycleStartDate: oldPayroll.periodStart,
-              cycleEndDate: oldPayroll.periodEnd,
+              lockedByPayrollId: oldPayroll.id,
             },
             data: {
-              lockedByPayrollId: newPayroll.id,
+              lockedByPayrollId: null,
             },
           });
+
+          await settleAdvancesForPayroll(tx, preview, newPayroll.id);
+
+          if (preview.advanceSummary.manualDeductionId) {
+            await tx.advanceManualDeduction.update({
+              where: {
+                id: preview.advanceSummary.manualDeductionId,
+              },
+              data: {
+                lockedByPayrollId: newPayroll.id,
+              },
+            });
+          }
+
+          if (!preview.advanceSummary.manualDeductionId) {
+            await tx.advancePayment.updateMany({
+              where: {
+                employeeId: oldPayroll.employeeId,
+                cycleStartDate: oldPayroll.periodStart,
+                cycleEndDate: oldPayroll.periodEnd,
+              },
+              data: {
+                lockedByPayrollId: newPayroll.id,
+              },
+            });
+          }
 
           const generatedCarryForward =
             await tx.payrollCarryForward.findFirst({

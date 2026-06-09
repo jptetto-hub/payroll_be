@@ -1,4 +1,8 @@
-import { AttendanceStatus, SalaryType } from "@prisma/client";
+import {
+  AdvanceDeductionMode,
+  AttendanceStatus,
+  SalaryType,
+} from "@prisma/client";
 import { SalaryCalculationRepository } from "./salary-calculation.repository";
 import { PayrollCarryForwardRepository } from "../payroll-carry-forward/payroll-carry-forward.repository";
 import { getWorkingDatesBetween } from "../../shared/payroll/payrollDate.utils";
@@ -66,18 +70,48 @@ const getWeeklyCarryInSunday = (params: {
   return precedingSunday >= params.joiningDate ? precedingSunday : null;
 };
 
+const allocateManualAdvanceDeduction = (
+  advances: any[],
+  requestedAmount: number,
+) => {
+  let remainingDeduction = roundMoney(requestedAmount);
+  const allocatedAdvances = [];
+
+  for (const advance of advances) {
+    if (remainingDeduction <= 0) break;
+
+    const remainingAmount = Number(advance.remainingAmount);
+    const deductedAmount = roundMoney(
+      Math.min(remainingAmount, remainingDeduction),
+    );
+
+    if (deductedAmount <= 0) continue;
+
+    allocatedAdvances.push({
+      ...advance,
+      __deductedAmount: deductedAmount,
+      deductedAmount,
+    });
+    remainingDeduction = roundMoney(remainingDeduction - deductedAmount);
+  }
+
+  return allocatedAdvances;
+};
+
 type SalaryPreviewEmployee = {
   id: string;
   employeeCode: string;
   name: string;
   status: string;
   salaryType: SalaryType;
+  advanceDeductionMode?: AdvanceDeductionMode;
   joiningDate: Date;
 };
 
 type SalaryPreviewOptions = {
   employee?: SalaryPreviewEmployee;
   skipActivePayrollSnapshot?: boolean;
+  manualDeductionAmountOverride?: number;
   recalculationPayrollSnapshot?: {
     advanceBreakdown?: unknown;
   };
@@ -166,6 +200,11 @@ const buildPreviewFromPayrollSnapshot = (
     advanceSummary: {
       advances: advanceBreakdown.advances ?? [],
       advanceDeduction,
+      advanceDeductionMode:
+        advanceBreakdown.advanceDeductionMode ?? AdvanceDeductionMode.AUTO,
+      manualDeductionId: advanceBreakdown.manualDeductionId ?? null,
+      manualDeductionAmount: toNumber(advanceBreakdown.manualDeductionAmount),
+      manualOutstandingTotal: toNumber(advanceBreakdown.manualOutstandingTotal),
     },
     carryForwardSummary: {
       pendingCarryForwards: [],
@@ -289,6 +328,8 @@ export class SalaryCalculationService {
       (options.recalculationPayrollSnapshot?.advanceBreakdown as any) ?? null;
     const recalculationCarryForwardSummary =
       recalculationAdvanceBreakdown?.carryForwardApplied ?? null;
+    const advanceDeductionMode =
+      employee.advanceDeductionMode ?? AdvanceDeductionMode.AUTO;
 
     const [
       salaryHistories,
@@ -297,6 +338,7 @@ export class SalaryCalculationService {
       advances,
       pendingCarryForwards,
       unprocessedEarlierAdvances,
+      manualDeduction,
     ] = await Promise.all([
       SalaryCalculationRepository.getSalaryHistories(
         data.employeeId,
@@ -313,29 +355,51 @@ export class SalaryCalculationService {
       ),
       recalculationAdvanceBreakdown
         ? Promise.resolve(recalculationAdvanceBreakdown.advances ?? [])
-        : SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
-            data.employeeId,
-            periodStart,
-            periodEnd,
-          ),
+        : advanceDeductionMode === AdvanceDeductionMode.MANUAL
+          ? SalaryCalculationRepository.getOutstandingAdvances(
+              data.employeeId,
+              periodEnd,
+            )
+          : SalaryCalculationRepository.getAdvancesWithCancelledPayrollSnapshot(
+              data.employeeId,
+              periodStart,
+              periodEnd,
+            ),
       recalculationCarryForwardSummary
         ? Promise.resolve(
             recalculationCarryForwardSummary.pendingCarryForwards ?? [],
           )
-        : PayrollCarryForwardRepository.findPendingByEmployee(
-            data.employeeId,
-            periodStart,
-          ),
-      options.recalculationPayrollSnapshot
+        : advanceDeductionMode === AdvanceDeductionMode.MANUAL
+          ? Promise.resolve([])
+          : PayrollCarryForwardRepository.findPendingByEmployee(
+              data.employeeId,
+              periodStart,
+            ),
+      options.recalculationPayrollSnapshot ||
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL
         ? Promise.resolve([])
         : SalaryCalculationRepository.getUnprocessedEarlierAdvances(
             data.employeeId,
             periodStart,
           ),
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL
+        ? options.manualDeductionAmountOverride !== undefined
+          ? Promise.resolve({
+              amount: options.manualDeductionAmountOverride,
+            })
+          : SalaryCalculationRepository.getManualDeduction(
+              data.employeeId,
+              periodStart,
+              periodEnd,
+            )
+        : Promise.resolve(null),
     ]);
     timer.checkpoint("payroll inputs fetch");
 
-    if (unprocessedEarlierAdvances.length > 0) {
+    if (
+      advanceDeductionMode === AdvanceDeductionMode.AUTO &&
+      unprocessedEarlierAdvances.length > 0
+    ) {
       const pendingCycles = [
         ...new Set(
           unprocessedEarlierAdvances.map(
@@ -543,8 +607,25 @@ export class SalaryCalculationService {
     const grossSalary = roundMoney(
       standardSalary + otEarnings,
     );
+    const manualOutstandingTotal = roundMoney(
+      advances.reduce(
+        (sum: number, item: any) => sum + Number(item.remainingAmount),
+        0,
+      ),
+    );
+    const manualRequestedDeduction =
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL
+        ? roundMoney(Number((manualDeduction as any)?.amount ?? 0))
+        : 0;
+    const calculationAdvances =
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL
+        ? allocateManualAdvanceDeduction(
+            advances,
+            Math.min(manualRequestedDeduction, manualOutstandingTotal),
+          )
+        : advances;
 
-    const invalidAdvances = advances.filter(
+    const invalidAdvances = calculationAdvances.filter(
       (item: any) => item.payCycleType !== employee.salaryType,
     );
 
@@ -554,7 +635,7 @@ export class SalaryCalculationService {
       );
     }
 
-    const hasInvalidRemainingAmount = advances.some(
+    const hasInvalidRemainingAmount = calculationAdvances.some(
       (item: any) => Number(item.remainingAmount) < 0,
     );
 
@@ -563,8 +644,14 @@ export class SalaryCalculationService {
     }
 
     const advanceDeduction = roundMoney(
-      advances.reduce(
-        (sum: number, item: any) => sum + Number(item.remainingAmount),
+      calculationAdvances.reduce(
+        (sum: number, item: any) =>
+          sum +
+          Number(
+            advanceDeductionMode === AdvanceDeductionMode.MANUAL
+              ? item.__deductedAmount
+              : item.remainingAmount,
+          ),
         0,
       ),
     );
@@ -576,6 +663,15 @@ export class SalaryCalculationService {
     if (missingDates.length > 0) {
       throw new Error(
         `Cannot generate payroll. Attendance missing for dates: ${missingDates.join(", ")}`,
+      );
+    }
+
+    if (
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL &&
+      advanceDeduction > grossSalary
+    ) {
+      throw new Error(
+        `Manual advance deduction cannot exceed payable salary ${grossSalary}. You can deduct up to ${grossSalary} for this cycle.`,
       );
     }
 
@@ -659,8 +755,12 @@ export class SalaryCalculationService {
       },
       salaryBreakdown: segments,
       advanceSummary: {
-        advances,
+        advances: calculationAdvances,
         advanceDeduction,
+        advanceDeductionMode,
+        manualDeductionId: (manualDeduction as any)?.id ?? null,
+        manualDeductionAmount: manualRequestedDeduction,
+        manualOutstandingTotal,
       },
       carryForwardSummary: {
         pendingCarryForwards: eligibleCarryForwards,

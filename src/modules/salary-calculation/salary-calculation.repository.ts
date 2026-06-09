@@ -12,6 +12,7 @@ export class SalaryCalculationRepository {
         role: true,
         status: true,
         salaryType: true,
+        advanceDeductionMode: true,
         joiningDate: true,
       },
     });
@@ -108,6 +109,52 @@ export class SalaryCalculationRepository {
       },
       orderBy: {
         date: "asc",
+      },
+    });
+  }
+
+  static getOutstandingAdvances(employeeId: string, periodEnd: Date) {
+    return prisma.advancePayment.findMany({
+      where: {
+        employeeId,
+        date: {
+          lte: periodEnd,
+        },
+        isSettled: false,
+        remainingAmount: {
+          gt: 0,
+        },
+      },
+      select: {
+        id: true,
+        employeeId: true,
+        amount: true,
+        remainingAmount: true,
+        settledAmount: true,
+        carryForwardAmount: true,
+        settlementStatus: true,
+        isSettled: true,
+        payCycleType: true,
+        cycleStartDate: true,
+        cycleEndDate: true,
+        date: true,
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  static getManualDeduction(
+    employeeId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ) {
+    return prisma.advanceManualDeduction.findUnique({
+      where: {
+        employeeId_periodStart_periodEnd: {
+          employeeId,
+          periodStart,
+          periodEnd,
+        },
       },
     });
   }

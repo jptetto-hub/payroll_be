@@ -99,6 +99,33 @@ const salaryExportColumns = [
   { header: "Payroll Status", key: "payrollStatus", width: 18 },
 ];
 
+const allInOneExportColumns = [
+  { header: "Employee Code", key: "employeeCode", width: 18 },
+  { header: "Name", key: "name", width: 25 },
+  { header: "Salary Type", key: "salaryType", width: 15 },
+  { header: "Period Start", key: "periodStart", width: 15 },
+  { header: "Period End", key: "periodEnd", width: 15 },
+  { header: "Standard Salary", key: "standardSalary", width: 18 },
+  { header: "OT Hours", key: "otTotalHours", width: 12 },
+  { header: "OT Hourly Rate", key: "otHourlyRate", width: 18 },
+  { header: "OT Earnings", key: "otEarnings", width: 15 },
+  { header: "Gross Salary", key: "grossSalary", width: 15 },
+  { header: "Advance Deduction", key: "advanceDeduction", width: 20 },
+  { header: "Advance Deduction Mode", key: "advanceDeductionMode", width: 26 },
+  { header: "Manual Deduction Amount", key: "manualDeductionAmount", width: 26 },
+  { header: "Manual Pending Balance", key: "manualPendingBalance", width: 26 },
+  { header: "Carry Forward Applied", key: "carryForwardApplied", width: 24 },
+  { header: "Total Deduction", key: "totalDeduction", width: 18 },
+  { header: "Raw Final Salary", key: "rawFinalSalary", width: 18 },
+  { header: "Final Salary", key: "finalSalary", width: 15 },
+  {
+    header: "Carry Forward Deduction",
+    key: "carryForwardDeduction",
+    width: 26,
+  },
+  { header: "Payroll Status", key: "payrollStatus", width: 18 },
+];
+
 const salaryExportKeys = [
   "employeeCode",
   "name",
@@ -131,6 +158,9 @@ const allInOneExportKeys = [
   "otEarnings",
   "grossSalary",
   "advanceDeduction",
+  "advanceDeductionMode",
+  "manualDeductionAmount",
+  "manualPendingBalance",
   "carryForwardApplied",
   "totalDeduction",
   "rawFinalSalary",
@@ -138,6 +168,21 @@ const allInOneExportKeys = [
   "carryForwardDeduction",
   "payrollStatus",
 ];
+
+const getAdvanceBreakdown = (p: any) => (p.advanceBreakdown as any) ?? {};
+const getAdvanceDeductionMode = (p: any) =>
+  getAdvanceBreakdown(p).advanceDeductionMode ??
+  p.employee?.advanceDeductionMode ??
+  "AUTO";
+const getManualDeductionAmount = (p: any) =>
+  Number(getAdvanceBreakdown(p).manualDeductionAmount ?? p.advanceDeduction ?? 0);
+const getManualPendingBalance = (p: any) => {
+  const breakdown = getAdvanceBreakdown(p);
+  const outstanding = Number(breakdown.manualOutstandingTotal ?? 0);
+  const deduction = Number(p.advanceDeduction ?? 0);
+
+  return Math.max(outstanding - deduction, 0);
+};
 
 const formatPayrollForExport = (p: any) => ({
   employeeCode: p.employee.employeeCode,
@@ -151,6 +196,11 @@ const formatPayrollForExport = (p: any) => ({
   otEarnings: Number(p.otEarnings ?? 0),
   grossSalary: Number(p.grossSalary),
   advanceDeduction: Number(p.advanceDeduction),
+  advanceDeductionMode: getAdvanceDeductionMode(p),
+  manualDeductionAmount:
+    getAdvanceDeductionMode(p) === "MANUAL" ? getManualDeductionAmount(p) : 0,
+  manualPendingBalance:
+    getAdvanceDeductionMode(p) === "MANUAL" ? getManualPendingBalance(p) : 0,
   carryForwardApplied: Number(p.carryForwardApplied),
   totalDeduction: Number(p.totalDeduction),
   rawFinalSalary: Number(p.rawFinalSalary),
@@ -171,6 +221,11 @@ const formatAllInOne = (p: any) => ({
   otEarnings: Number(p.otEarnings ?? 0),
   grossSalary: Number(p.grossSalary),
   advanceDeduction: Number(p.advanceDeduction),
+  advanceDeductionMode: getAdvanceDeductionMode(p),
+  manualDeductionAmount:
+    getAdvanceDeductionMode(p) === "MANUAL" ? getManualDeductionAmount(p) : 0,
+  manualPendingBalance:
+    getAdvanceDeductionMode(p) === "MANUAL" ? getManualPendingBalance(p) : 0,
   carryForwardApplied: Number(p.carryForwardApplied),
   totalDeduction: Number(p.totalDeduction),
   rawFinalSalary: Number(p.rawFinalSalary),
@@ -242,6 +297,7 @@ export class ReportsService {
       employeeCode: a.employee.employeeCode,
       name: a.employee.name,
       salaryType: a.employee.salaryType,
+      advanceDeductionMode: a.employee.advanceDeductionMode,
       amount: Number(a.amount),
       remainingAmount: Number(a.remainingAmount),
       settledAmount: Number(a.settledAmount),
@@ -259,6 +315,7 @@ export class ReportsService {
       "employeeCode",
       "name",
       "salaryType",
+      "advanceDeductionMode",
       "amount",
       "remainingAmount",
       "settledAmount",
@@ -322,6 +379,7 @@ export class ReportsService {
       employeeCode: a.employee.employeeCode,
       name: a.employee.name,
       salaryType: a.employee.salaryType,
+      advanceDeductionMode: a.employee.advanceDeductionMode,
       amount: Number(a.amount),
       remainingAmount: Number(a.remainingAmount),
       settledAmount: Number(a.settledAmount),
@@ -341,6 +399,7 @@ export class ReportsService {
         { header: "Employee Code", key: "employeeCode", width: 18 },
         { header: "Name", key: "name", width: 25 },
         { header: "Salary Type", key: "salaryType", width: 15 },
+        { header: "Advance Deduction Mode", key: "advanceDeductionMode", width: 26 },
         { header: "Amount", key: "amount", width: 15 },
         { header: "Remaining Amount", key: "remainingAmount", width: 20 },
         { header: "Settled Amount", key: "settledAmount", width: 18 },
@@ -386,7 +445,7 @@ export class ReportsService {
 
     return generateExcelBuffer(
       "All In One Report",
-      salaryExportColumns,
+      allInOneExportColumns,
       (result.data as any[]).map(formatAllInOne),
     );
   }

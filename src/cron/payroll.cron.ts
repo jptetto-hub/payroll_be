@@ -6,6 +6,11 @@ import { payrollSchedulerQueue } from "../jobs/payrollScheduler.queue";
 import { logger } from "../config/logger";
 import { getConfiguredTimezone } from "../config/timezone";
 
+const DAILY_CATCH_UP_CRON_EXPRESSION =
+  process.env.PAYROLL_CRON_CATCH_UP_EXPRESSION || "5 0 * * *";
+const MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION =
+  process.env.PAYROLL_MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION || "59 11 * * *";
+
 function getDueSalaryTypes(date: Date, timezone: string) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -34,10 +39,135 @@ function getDueSalaryTypes(date: Date, timezone: string) {
   return salaryTypes;
 }
 
+async function enqueuePayrollIfPending(params: {
+  salaryTypes?: SalaryType[];
+  reason: "CRON_DUE_TIME" | "DAILY_CATCH_UP" | "STARTUP_CATCH_UP";
+}) {
+  const setting = await SchedulerRepository.getSystemSetting();
+
+  if (setting && !setting.autoPayrollEnabled) {
+    logger.info(
+      { salaryTypes: params.salaryTypes, reason: params.reason },
+      "Payroll cron skipped: autoPayrollEnabled is false",
+    );
+    return;
+  }
+
+  await SchedulerService.recoverStaleRuns();
+
+  const existingManualRun =
+    await SchedulerRepository.findActiveRunByName("MANUAL_PAYROLL_SCHEDULER");
+  const existingCronRun =
+    await SchedulerRepository.findActiveRunByName("CRON_PAYROLL_SCHEDULER");
+
+  if (existingManualRun || existingCronRun) {
+    logger.warn(
+      {
+        existingManualRun,
+        existingCronRun,
+        salaryTypes: params.salaryTypes,
+        reason: params.reason,
+      },
+      "Payroll cron skipped because scheduler is already running",
+    );
+    return;
+  }
+
+  const pendingPayrollCount =
+    await SchedulerService.countPendingCurrentCyclePayrolls(params.salaryTypes);
+
+  if (pendingPayrollCount === 0) {
+    logger.info(
+      { salaryTypes: params.salaryTypes, reason: params.reason },
+      "Payroll cron skipped: all current payroll cycles are already handled",
+    );
+    return;
+  }
+
+  const salaryTypes = params.salaryTypes ?? [
+    SalaryType.MONTHLY,
+    SalaryType.WEEKLY,
+  ];
+  const run = await SchedulerRepository.createRun({
+    name: "CRON_PAYROLL_SCHEDULER",
+    status: SchedulerRunStatus.PENDING,
+    metadata: {
+      triggeredBy: "CRON",
+      triggeredAt: new Date().toISOString(),
+      mode: "BACKGROUND",
+      reason: params.reason,
+      salaryTypes,
+      periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
+    },
+  });
+
+  await payrollSchedulerQueue.add(
+    "manual-payroll-run",
+    {
+      runId: run.id,
+      triggeredBy: undefined,
+      triggeredByType: "CRON",
+      salaryTypes,
+    },
+    {
+      attempts: 1,
+      removeOnComplete: false,
+      removeOnFail: false,
+    },
+  );
+
+  logger.info(
+    { runId: run.id, salaryTypes, pendingPayrollCount, reason: params.reason },
+    "Payroll cron job queued",
+  );
+}
+
 export const startPayrollCron = async () => {
   const setting = await SchedulerRepository.getSystemSetting();
   const cronTimezone = getConfiguredTimezone(
     process.env.PAYROLL_CRON_TIMEZONE || setting?.organizationTimezone,
+  );
+
+  cron.schedule(
+    MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION,
+    async () => {
+      try {
+        const salaryTypes = getDueSalaryTypes(new Date(), cronTimezone);
+
+        if (salaryTypes.length === 0) {
+          return;
+        }
+
+        const reminder =
+          await SchedulerService.getManualAdvanceDeductionReminders(
+            salaryTypes,
+          );
+
+        if (reminder.count > 0) {
+          logger.warn(
+            {
+              count: reminder.count,
+              items: reminder.items,
+              salaryTypes,
+            },
+            "Manual advance deduction reminder: amounts missing before payroll cron",
+          );
+        } else {
+          logger.info(
+            { salaryTypes },
+            "Manual advance deduction reminder checked: no missing amounts",
+          );
+        }
+      } catch (error) {
+        logger.error(
+          { error },
+          "Manual advance deduction reminder cron failed",
+        );
+      }
+    },
+    {
+      timezone: cronTimezone,
+    },
   );
 
   cron.schedule(
@@ -50,73 +180,10 @@ export const startPayrollCron = async () => {
           return;
         }
 
-        const setting = await SchedulerRepository.getSystemSetting();
-
-        if (setting && !setting.autoPayrollEnabled) {
-          logger.info(
-            { salaryTypes },
-            "Payroll cron skipped: autoPayrollEnabled is false",
-          );
-          return;
-        }
-
-        await SchedulerService.recoverStaleRuns();
-
-        const existingManualRun =
-          await SchedulerRepository.findActiveRunByName(
-            "MANUAL_PAYROLL_SCHEDULER",
-          );
-        const existingCronRun = await SchedulerRepository.findActiveRunByName(
-          "CRON_PAYROLL_SCHEDULER",
-        );
-
-        if (existingManualRun || existingCronRun) {
-          logger.warn(
-            { existingManualRun, existingCronRun, salaryTypes },
-            "Payroll cron skipped because scheduler is already running",
-          );
-          return;
-        }
-
-        const pendingPayrollCount =
-          await SchedulerService.countPendingCurrentCyclePayrolls(salaryTypes);
-
-        if (pendingPayrollCount === 0) {
-          logger.info(
-            { salaryTypes },
-            "Payroll cron skipped: all current payroll cycles are already handled",
-          );
-          return;
-        }
-
-        const run = await SchedulerRepository.createRun({
-          name: "CRON_PAYROLL_SCHEDULER",
-          status: SchedulerRunStatus.PENDING,
-          metadata: {
-            triggeredBy: "CRON",
-            triggeredAt: new Date().toISOString(),
-            mode: "BACKGROUND",
-            salaryTypes,
-            periodPolicy: "LATEST_COMPLETED_CYCLE_ONLY",
-          },
+        await enqueuePayrollIfPending({
+          salaryTypes,
+          reason: "CRON_DUE_TIME",
         });
-
-        await payrollSchedulerQueue.add(
-          "manual-payroll-run",
-          {
-            runId: run.id,
-            triggeredBy: undefined,
-            triggeredByType: "CRON",
-            salaryTypes,
-          },
-          {
-            attempts: 1,
-            removeOnComplete: false,
-            removeOnFail: false,
-          },
-        );
-
-        logger.info({ runId: run.id, salaryTypes }, "Payroll cron job queued");
       } catch (error) {
         logger.error({ error }, "Payroll cron failed to enqueue job");
       }
@@ -126,8 +193,36 @@ export const startPayrollCron = async () => {
     },
   );
 
-  logger.info(
-    { timezone: cronTimezone },
-    "Payroll cron scheduled for Saturday and month-end at 11:59 PM",
+  cron.schedule(
+    DAILY_CATCH_UP_CRON_EXPRESSION,
+    async () => {
+      try {
+        await enqueuePayrollIfPending({ reason: "DAILY_CATCH_UP" });
+      } catch (error) {
+        logger.error({ error }, "Payroll cron catch-up failed to enqueue job");
+      }
+    },
+    {
+      timezone: cronTimezone,
+    },
   );
+
+  logger.info(
+    {
+      timezone: cronTimezone,
+      dueExpression: "59 23 * * *",
+      manualAdvanceReminderExpression:
+        MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION,
+      catchUpExpression: DAILY_CATCH_UP_CRON_EXPRESSION,
+    },
+    "Payroll cron scheduled",
+  );
+
+  if (process.env.PAYROLL_CRON_RUN_ON_STARTUP !== "false") {
+    void enqueuePayrollIfPending({ reason: "STARTUP_CATCH_UP" }).catch(
+      (error) => {
+        logger.error({ error }, "Payroll startup catch-up failed");
+      },
+    );
+  }
 };

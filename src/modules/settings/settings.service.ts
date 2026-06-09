@@ -17,6 +17,10 @@ import {
 import { SystemRestartService } from "../maintenance/system-restart.service";
 import { publishOrganizationTimezone } from "../../config/timezone-sync";
 import { logger } from "../../config/logger";
+import {
+  normalizeRolePermissions,
+  RolePermissions,
+} from "./role-permissions";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
@@ -30,7 +34,11 @@ export class SettingsService {
   }
 
   static async getSettings() {
-    return this.getSystemSettingCached();
+    const setting = await this.getSystemSettingCached();
+    return {
+      ...setting,
+      rolePermissions: normalizeRolePermissions(setting.rolePermissions),
+    };
   }
 
   static async getSystemSettingCached() {
@@ -58,11 +66,28 @@ export class SettingsService {
     ]);
   }
 
+  static async getRolePermissions() {
+    const setting = await this.getSystemSettingCached();
+    return normalizeRolePermissions(setting.rolePermissions);
+  }
+
+  static async updateRolePermissions(rolePermissions: RolePermissions) {
+    const normalized = normalizeRolePermissions(rolePermissions);
+    const setting = await SettingsRepository.update({
+      rolePermissions: normalized,
+    });
+
+    await this.clearSystemSettingCache();
+
+    return normalizeRolePermissions(setting.rolePermissions);
+  }
+
   static async updateSettings(data: {
     weekStartsOn?: "MONDAY" | "SUNDAY";
     monthlyPayrollDay?: number | null;
     autoPayrollEnabled?: boolean;
     organizationTimezone?: string;
+    rolePermissions?: RolePermissions;
   }) {
     if (Object.keys(data).length === 0) {
       throw new Error("At least one setting field is required");

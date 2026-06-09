@@ -7,14 +7,32 @@ import { validate } from "../../middlewares/validate.middleware";
 import {
   createWorkHourSettingSchema,
   updateOrganizationTimezoneSchema,
+  updateRolePermissionsSchema,
   updateSettingsSchema,
   updateWorkHourSettingSchema,
 } from "./settings.validator";
 import { sensitiveActionRateLimiter } from "../../middlewares/rateLimit.middleware";
+import { requireFeaturePermission } from "../../middlewares/feature-permission.middleware";
 
 const router = Router();
 
 router.use(authMiddleware);
+
+router.get("/permissions/me", SettingsController.getMyPermissions);
+
+router.get(
+  "/permissions",
+  allowRoles(Role.SUPER_ADMIN),
+  SettingsController.getRolePermissions,
+);
+
+router.put(
+  "/permissions",
+  allowRoles(Role.SUPER_ADMIN),
+  sensitiveActionRateLimiter,
+  validate(updateRolePermissionsSchema),
+  SettingsController.updateRolePermissions,
+);
 
 router.get("/", allowRoles(Role.SUPER_ADMIN), SettingsController.get);
 
@@ -35,6 +53,7 @@ router.get(
 router.post(
   "/work-hours",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("SETTINGS"),
   sensitiveActionRateLimiter,
   validate(createWorkHourSettingSchema),
   SettingsController.createWorkHourSetting,
@@ -43,6 +62,7 @@ router.post(
 router.patch(
   "/work-hours/:id",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("SETTINGS"),
   sensitiveActionRateLimiter,
   validate(updateWorkHourSettingSchema),
   SettingsController.updateWorkHourSetting,

@@ -12,6 +12,37 @@ import { CacheService } from "../../utils/cache";
 const PAYSLIP_READ_CACHE_PREFIX = "payslip-read";
 const PAYSLIP_READ_CACHE_TTL = 30;
 
+const parseDateOnly = (value: string) => {
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date format. Use YYYY-MM-DD");
+  }
+
+  return parsed;
+};
+
+const parseOptionalDateOnly = (value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  return parseDateOnly(value);
+};
+
+const formatDate = (date: Date) => date.toISOString().slice(0, 10);
+
+const parseDateRange = (query: any) => {
+  const from = parseOptionalDateOnly(query.from);
+  const to = parseOptionalDateOnly(query.to);
+
+  if (from && to && from > to) {
+    throw new Error("From date cannot be greater than To date");
+  }
+
+  return { from, to };
+};
+
 const invalidatePayslipReadCaches = () => {
   void Promise.all([
     CacheService.delByPattern(`${PAYSLIP_READ_CACHE_PREFIX}:*`),
@@ -86,6 +117,7 @@ export class PayslipService {
 
   static async list(query: any, authUser: { id: string; role: Role }) {
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
     const { directEmployeeId, employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
@@ -96,6 +128,8 @@ export class PayslipService {
       authUser.role,
       authUser.id,
       query.employeeId ?? "all",
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -110,6 +144,7 @@ export class PayslipService {
       take,
       ...(directEmployeeId && { employeeId: directEmployeeId }),
       employeeWhere,
+      ...dateRange,
     });
 
     const result = {
@@ -124,10 +159,13 @@ export class PayslipService {
 
   static async myPayslips(employeeId: string, query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
     const cacheKey = CacheService.buildKey(
       PAYSLIP_READ_CACHE_PREFIX,
       "my",
       employeeId,
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -138,8 +176,8 @@ export class PayslipService {
     }
 
     const [payslips, total] = await Promise.all([
-      PayslipRepository.listByEmployee(employeeId, { skip, take }),
-      PayslipRepository.countByEmployee(employeeId),
+      PayslipRepository.listByEmployee(employeeId, { skip, take }, dateRange),
+      PayslipRepository.countByEmployeeWithFilters(employeeId, dateRange),
     ]);
 
     const result = {
@@ -203,10 +241,13 @@ export class PayslipService {
     ensureEmployeeAccess(employee.role, currentRole);
 
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
     const cacheKey = CacheService.buildKey(
       PAYSLIP_READ_CACHE_PREFIX,
       "employee",
       employeeId,
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -217,8 +258,8 @@ export class PayslipService {
     }
 
     const [payslips, total] = await Promise.all([
-      PayslipRepository.listByEmployee(employeeId, { skip, take }),
-      PayslipRepository.countByEmployee(employeeId),
+      PayslipRepository.listByEmployee(employeeId, { skip, take }, dateRange),
+      PayslipRepository.countByEmployeeWithFilters(employeeId, dateRange),
     ]);
 
     const result = {

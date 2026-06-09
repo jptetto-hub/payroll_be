@@ -9,6 +9,12 @@ const router = Router();
 
 router.use(authMiddleware);
 
+router.get(
+  "/manual-advance-reminders",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  SchedulerController.manualAdvanceReminders,
+);
+
 router.post(
   "/run",
   allowRoles(Role.SUPER_ADMIN),

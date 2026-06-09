@@ -136,11 +136,23 @@ export class PayslipRepository {
     take: number;
     employeeId?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
+    from?: Date;
+    to?: Date;
   }) {
     const where = {
       ...(params.employeeId
         ? { employeeId: params.employeeId }
         : params.employeeWhere && { employee: params.employeeWhere }),
+      ...(params.from && {
+        periodStart: {
+          gte: params.from,
+        },
+      }),
+      ...(params.to && {
+        periodEnd: {
+          lte: params.to,
+        },
+      }),
       payroll: {
         is: {
           status: {
@@ -228,10 +240,24 @@ export class PayslipRepository {
   static listByEmployee(
     employeeId: string,
     pagination?: { skip: number; take: number },
+    filters?: {
+      from?: Date;
+      to?: Date;
+    },
   ) {
     return readPrisma.payslip.findMany({
       where: {
         employeeId,
+        ...(filters?.from && {
+          periodStart: {
+            gte: filters.from,
+          },
+        }),
+        ...(filters?.to && {
+          periodEnd: {
+            lte: filters.to,
+          },
+        }),
         payroll: {
           is: {
             status: {
@@ -281,9 +307,29 @@ export class PayslipRepository {
   }
 
   static countByEmployee(employeeId: string) {
+    return this.countByEmployeeWithFilters(employeeId);
+  }
+
+  static countByEmployeeWithFilters(
+    employeeId: string,
+    filters?: {
+      from?: Date;
+      to?: Date;
+    },
+  ) {
     return readPrisma.payslip.count({
       where: {
         employeeId,
+        ...(filters?.from && {
+          periodStart: {
+            gte: filters.from,
+          },
+        }),
+        ...(filters?.to && {
+          periodEnd: {
+            lte: filters.to,
+          },
+        }),
         payroll: {
           is: {
             status: {

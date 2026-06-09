@@ -78,6 +78,7 @@ const payrollSelect = {
   rawFinalSalary: true,
   finalSalary: true,
   carryForwardDeduction: true,
+  advanceBreakdown: true,
   status: true,
   version: true,
   workingDays: true,
@@ -92,6 +93,7 @@ const payrollSelect = {
       department: true,
       designation: true,
       salaryType: true,
+      advanceDeductionMode: true,
     },
   },
 };
@@ -390,6 +392,7 @@ export class ReportsRepository {
               employeeCode: true,
               name: true,
               salaryType: true,
+              advanceDeductionMode: true,
             },
           },
         },

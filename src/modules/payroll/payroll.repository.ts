@@ -79,6 +79,7 @@ export class PayrollRepository {
         role: true,
         status: true,
         salaryType: true,
+        advanceDeductionMode: true,
         joiningDate: true,
       },
     });
@@ -363,9 +364,25 @@ export class PayrollRepository {
   static listByEmployee(
     employeeId: string,
     pagination?: { skip: number; take: number },
+    filters?: {
+      from?: Date;
+      to?: Date;
+    },
   ) {
     return readPrisma.payroll.findMany({
-      where: { employeeId },
+      where: {
+        employeeId,
+        ...(filters?.from && {
+          periodStart: {
+            gte: filters.from,
+          },
+        }),
+        ...(filters?.to && {
+          periodEnd: {
+            lte: filters.to,
+          },
+        }),
+      },
       ...(pagination && {
         skip: pagination.skip,
         take: pagination.take,
@@ -375,9 +392,27 @@ export class PayrollRepository {
     });
   }
 
-  static countByEmployee(employeeId: string) {
+  static countByEmployee(
+    employeeId: string,
+    filters?: {
+      from?: Date;
+      to?: Date;
+    },
+  ) {
     return readPrisma.payroll.count({
-      where: { employeeId },
+      where: {
+        employeeId,
+        ...(filters?.from && {
+          periodStart: {
+            gte: filters.from,
+          },
+        }),
+        ...(filters?.to && {
+          periodEnd: {
+            lte: filters.to,
+          },
+        }),
+      },
     });
   }
 

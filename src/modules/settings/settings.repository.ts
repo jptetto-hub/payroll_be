@@ -1,4 +1,5 @@
 import { prisma, readPrisma } from "../../config/prisma";
+import { RolePermissions } from "./role-permissions";
 
 const DEFAULT_SETTINGS_ID = "default-settings";
 const db = prisma as any;
@@ -13,6 +14,7 @@ export class SettingsRepository {
         weekStartsOn: "MONDAY",
         autoPayrollEnabled: true,
         organizationTimezone: "UTC",
+        rolePermissions: {},
       },
     });
   }
@@ -22,6 +24,7 @@ export class SettingsRepository {
     monthlyPayrollDay?: number | null;
     autoPayrollEnabled?: boolean;
     organizationTimezone?: string;
+    rolePermissions?: RolePermissions;
   }) {
     return prisma.systemSetting.upsert({
       where: { id: DEFAULT_SETTINGS_ID },
@@ -32,6 +35,7 @@ export class SettingsRepository {
         monthlyPayrollDay: data.monthlyPayrollDay ?? null,
         autoPayrollEnabled: data.autoPayrollEnabled ?? true,
         organizationTimezone: data.organizationTimezone ?? "UTC",
+        rolePermissions: data.rolePermissions ?? {},
       },
     });
   }

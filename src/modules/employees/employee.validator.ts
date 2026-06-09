@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { EmployeeStatus, Role, SalaryType } from "@prisma/client";
+import {
+  AdvanceDeductionMode,
+  EmployeeStatus,
+  Role,
+  SalaryType,
+} from "@prisma/client";
 
 const phoneSchema = z
   .string()
@@ -24,6 +29,9 @@ export const createEmployeeSchema = z.object({
     joiningDate: z.string().datetime(),
 
     salaryType: z.nativeEnum(SalaryType),
+    advanceDeductionMode: z
+      .nativeEnum(AdvanceDeductionMode)
+      .default(AdvanceDeductionMode.AUTO),
     role: z.nativeEnum(Role).default(Role.USER),
 
     profileImage: z.string().url().optional(),
@@ -42,6 +50,7 @@ export const updateEmployeeSchema = z.object({
     joiningDate: z.string().datetime().optional(),
 
     salaryType: z.nativeEnum(SalaryType).optional(),
+    advanceDeductionMode: z.nativeEnum(AdvanceDeductionMode).optional(),
     profileImage: z.string().url().optional(),
   }),
 });

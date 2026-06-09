@@ -21,6 +21,7 @@ export class AdvanceRepository {
         role: true,
         status: true,
         salaryType: true,
+        advanceDeductionMode: true,
         joiningDate: true,
       },
     });
@@ -85,6 +86,7 @@ export class AdvanceRepository {
             role: true,
             status: true,
             salaryType: true,
+            advanceDeductionMode: true,
             joiningDate: true,
           },
         },
@@ -98,12 +100,20 @@ export class AdvanceRepository {
     employeeId?: string;
     employeeWhere?: Prisma.EmployeeWhereInput;
     isSettled?: boolean;
+    from?: Date;
+    to?: Date;
   }) {
     const where = {
       ...(params.employeeId
         ? { employeeId: params.employeeId }
         : params.employeeWhere && { employee: params.employeeWhere }),
       ...(params.isSettled !== undefined && { isSettled: params.isSettled }),
+      ...((params.from || params.to) && {
+        date: {
+          ...(params.from && { gte: params.from }),
+          ...(params.to && { lte: params.to }),
+        },
+      }),
     };
 
     return Promise.all([
@@ -148,9 +158,27 @@ export class AdvanceRepository {
   static listByEmployee(
     employeeId: string,
     pagination?: { skip: number; take: number },
+    filters?: {
+      from?: Date;
+      to?: Date;
+      isSettled?: boolean;
+    },
   ) {
+    const where = {
+      employeeId,
+      ...(filters?.isSettled !== undefined && {
+        isSettled: filters.isSettled,
+      }),
+      ...((filters?.from || filters?.to) && {
+        date: {
+          ...(filters.from && { gte: filters.from }),
+          ...(filters.to && { lte: filters.to }),
+        },
+      }),
+    };
+
     return readPrisma.advancePayment.findMany({
-      where: { employeeId },
+      where,
       ...(pagination && {
         skip: pagination.skip,
         take: pagination.take,
@@ -159,9 +187,29 @@ export class AdvanceRepository {
     });
   }
 
-  static countByEmployee(employeeId: string) {
+  static countByEmployee(
+    employeeId: string,
+    filters?: {
+      from?: Date;
+      to?: Date;
+      isSettled?: boolean;
+    },
+  ) {
+    const where = {
+      employeeId,
+      ...(filters?.isSettled !== undefined && {
+        isSettled: filters.isSettled,
+      }),
+      ...((filters?.from || filters?.to) && {
+        date: {
+          ...(filters.from && { gte: filters.from }),
+          ...(filters.to && { lte: filters.to }),
+        },
+      }),
+    };
+
     return readPrisma.advancePayment.count({
-      where: { employeeId },
+      where,
     });
   }
 
@@ -348,6 +396,109 @@ export class AdvanceRepository {
         isSettled: false,
       },
       orderBy: { date: "asc" },
+    });
+  }
+
+  static getOutstandingAdvances(employeeId: string, periodEnd: Date) {
+    return prisma.advancePayment.findMany({
+      where: {
+        employeeId,
+        date: {
+          lte: periodEnd,
+        },
+        isSettled: false,
+        remainingAmount: {
+          gt: 0,
+        },
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  static getAdvanceHistoryUntil(employeeId: string, periodEnd: Date) {
+    return prisma.advancePayment.findMany({
+      where: {
+        employeeId,
+        date: {
+          lte: periodEnd,
+        },
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  static getManualDeduction(
+    employeeId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ) {
+    return prisma.advanceManualDeduction.findUnique({
+      where: {
+        employeeId_periodStart_periodEnd: {
+          employeeId,
+          periodStart,
+          periodEnd,
+        },
+      },
+    });
+  }
+
+  static getPayrollSnapshot(payrollId: string) {
+    return prisma.payroll.findUnique({
+      where: { id: payrollId },
+      select: {
+        id: true,
+        grossSalary: true,
+        advanceDeduction: true,
+        advanceBreakdown: true,
+      },
+    });
+  }
+
+  static findManualDeductionById(id: string) {
+    return prisma.advanceManualDeduction.findUnique({
+      where: { id },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            employeeCode: true,
+            name: true,
+            role: true,
+          },
+        },
+      },
+    });
+  }
+
+  static deleteManualDeduction(id: string) {
+    return prisma.advanceManualDeduction.delete({
+      where: { id },
+    });
+  }
+
+  static upsertManualDeduction(data: {
+    employeeId: string;
+    periodStart: Date;
+    periodEnd: Date;
+    salaryType: SalaryType;
+    amount: number;
+    note?: string;
+    createdById?: string;
+  }) {
+    return prisma.advanceManualDeduction.upsert({
+      where: {
+        employeeId_periodStart_periodEnd: {
+          employeeId: data.employeeId,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
+        },
+      },
+      create: data,
+      update: {
+        amount: data.amount,
+        note: data.note,
+      },
     });
   }
 

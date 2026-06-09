@@ -30,6 +30,8 @@ import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 import maintenanceRoutes from "./modules/maintenance/maintenance.routes";
 import healthRoutes from "./modules/health/health.routes";
 import rbacTestRoutes from "./modules/auth/rbac-test.routes";
+import { authMiddleware } from "./middlewares/auth.middleware";
+import { requireFeaturePermission } from "./middlewares/feature-permission.middleware";
 
 const app = express();
 
@@ -138,31 +140,86 @@ app.use("/api/test", rbacTestRoutes);
 
 app.use("/api/employees", employeeRoutes);
 
-app.use("/api/salary-history", salaryHistoryRoutes);
+app.use(
+  "/api/salary-history",
+  authMiddleware,
+  requireFeaturePermission("SALARY_HISTORY"),
+  salaryHistoryRoutes,
+);
 
-app.use("/api/attendance", attendanceRoutes);
+app.use(
+  "/api/attendance",
+  authMiddleware,
+  requireFeaturePermission("ATTENDANCE"),
+  attendanceRoutes,
+);
 
-app.use("/api/attendance-requests", attendanceRequestRoutes);
+app.use(
+  "/api/attendance-requests",
+  authMiddleware,
+  requireFeaturePermission("ATTENDANCE"),
+  attendanceRequestRoutes,
+);
 
-app.use("/api/advances", advanceRoutes);
+app.use(
+  "/api/advances",
+  authMiddleware,
+  requireFeaturePermission("ADVANCES"),
+  advanceRoutes,
+);
 
-app.use("/api/salary-calculation", salaryCalculationRoutes);
+app.use(
+  "/api/salary-calculation",
+  authMiddleware,
+  requireFeaturePermission("SALARY_CALCULATION"),
+  salaryCalculationRoutes,
+);
 
-app.use("/api/payroll", payrollRoutes);
+app.use(
+  "/api/payroll",
+  authMiddleware,
+  requireFeaturePermission("PAYROLL"),
+  payrollRoutes,
+);
 
-app.use("/api/payslips", payslipRoutes);
+app.use(
+  "/api/payslips",
+  authMiddleware,
+  requireFeaturePermission("PAYSLIPS"),
+  payslipRoutes,
+);
 
-app.use("/api/ledger", ledgerRoutes);
+app.use(
+  "/api/ledger",
+  authMiddleware,
+  requireFeaturePermission("LEDGER"),
+  ledgerRoutes,
+);
 
 app.use("/api/scheduler", schedulerRoutes);
 
-app.use("/api/reports", reportsRoutes);
+app.use(
+  "/api/reports",
+  authMiddleware,
+  requireFeaturePermission("REPORTS"),
+  reportsRoutes,
+);
 
-app.use("/api/audit-logs", auditLogRoutes);
+app.use(
+  "/api/audit-logs",
+  authMiddleware,
+  requireFeaturePermission("AUDIT_LOGS"),
+  auditLogRoutes,
+);
 
 app.use("/api/settings", settingsRoutes);
 
-app.use("/api/dashboard", dashboardRoutes);
+app.use(
+  "/api/dashboard",
+  authMiddleware,
+  requireFeaturePermission("DASHBOARD"),
+  dashboardRoutes,
+);
 
 app.use("/api/maintenance", maintenanceRoutes);
 

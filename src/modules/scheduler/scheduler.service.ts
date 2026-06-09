@@ -68,6 +68,7 @@ const getWeeklyEndSaturday = (weekStart: Date) => {
 };
 
 const todayUtc = () => getBusinessDate();
+const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
 
 type SchedulerRunOptions = {
   runId?: string;
@@ -145,6 +146,52 @@ export class SchedulerService {
     }));
 
     return SchedulerRepository.countPendingActiveEmployees(targetPeriods);
+  }
+
+  static async getManualAdvanceDeductionReminders(salaryTypes?: SalaryType[]) {
+    const setting = await SchedulerRepository.getSystemSetting();
+    const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
+    const currentDate = todayUtc();
+    const eligibleSalaryTypes = salaryTypes?.length
+      ? salaryTypes
+      : [SalaryType.MONTHLY, SalaryType.WEEKLY];
+    const targetPeriods = eligibleSalaryTypes.map((salaryType) => ({
+      salaryType,
+      ...getLatestCompletedPeriod(salaryType, currentDate, weekStartsOn),
+    }));
+    const employees =
+      await SchedulerRepository.findManualAdvanceReminderEmployees(
+        targetPeriods,
+      );
+    const items = employees.map((employee) => {
+      const outstandingTotal = roundMoney(
+        employee.advances.reduce(
+          (sum, advance) => sum + Number(advance.remainingAmount),
+          0,
+        ),
+      );
+
+      return {
+        employeeId: employee.id,
+        employeeCode: employee.employeeCode,
+        employeeName: employee.name,
+        salaryType: employee.salaryType,
+        periodStart: formatDate(employee.periodStart),
+        periodEnd: formatDate(employee.periodEnd),
+        outstandingTotal,
+        advanceCount: employee.advances.length,
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      message:
+        items.length > 0
+          ? "Manual advance deduction amounts are pending for upcoming payroll."
+          : "No manual advance deduction reminders pending.",
+      items,
+      count: items.length,
+    };
   }
 
   static async runPayrollScheduler(

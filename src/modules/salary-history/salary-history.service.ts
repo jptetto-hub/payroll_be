@@ -6,6 +6,7 @@ import {
 } from "../../shared/utils/pagination.util";
 import { assertSalaryHistoryNotLocked } from "../../shared/payroll/payroll-lock.util";
 import { CacheService } from "../../utils/cache";
+import { AppError } from "../../shared/utils/app-error";
 
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 const SALARY_HISTORY_READ_CACHE_PREFIX = "salary-history-read";
@@ -217,7 +218,7 @@ export class SalaryHistoryService {
     }
 
     if (!salary) {
-      throw new Error("No salary history found for the selected date");
+      throw new AppError("No salary history found for the selected date", 404);
     }
 
     const result = {

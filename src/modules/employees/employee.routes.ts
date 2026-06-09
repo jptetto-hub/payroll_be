@@ -10,6 +10,7 @@ import {
   updateRoleSchema,
   updateStatusSchema,
 } from "./employee.validator";
+import { requireFeaturePermission } from "../../middlewares/feature-permission.middleware";
 
 const router = Router();
 
@@ -18,6 +19,7 @@ router.use(authMiddleware);
 router.post(
   "/",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("EMPLOYEES"),
   validate(createEmployeeSchema),
   EmployeeController.create,
 );
@@ -25,6 +27,7 @@ router.post(
 router.get(
   "/",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("EMPLOYEES"),
   EmployeeController.list,
 );
 
@@ -43,6 +46,7 @@ router.get(
 router.patch(
   "/:id",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("EMPLOYEES"),
   validate(updateEmployeeSchema),
   EmployeeController.update,
 );
@@ -50,6 +54,7 @@ router.patch(
 router.patch(
   "/:id/status",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  requireFeaturePermission("EMPLOYEES"),
   validate(updateStatusSchema),
   EmployeeController.updateStatus,
 );

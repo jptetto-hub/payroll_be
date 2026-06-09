@@ -1,5 +1,10 @@
 import { prisma, readPrisma } from "../../config/prisma";
-import { EmployeeStatus, Role, SalaryType } from "@prisma/client";
+import {
+  AdvanceDeductionMode,
+  EmployeeStatus,
+  Role,
+  SalaryType,
+} from "@prisma/client";
 
 type CreateEmployeeInput = {
   employeeCode: string;
@@ -12,6 +17,7 @@ type CreateEmployeeInput = {
   department?: string;
   joiningDate: Date;
   salaryType: SalaryType;
+  advanceDeductionMode?: AdvanceDeductionMode;
   role: Role;
   profileImage?: string;
 };
@@ -122,6 +128,7 @@ export class EmployeeRepository {
         name: true,
         employeeCode: true,
         salaryType: true,
+        advanceDeductionMode: true,
         status: true,
         role: true,
       },
@@ -164,6 +171,7 @@ export class EmployeeRepository {
       department: true,
       joiningDate: true,
       salaryType: true,
+      advanceDeductionMode: true,
       status: true,
       role: true,
       profileImage: true,

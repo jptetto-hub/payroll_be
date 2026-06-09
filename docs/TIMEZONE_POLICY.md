@@ -45,5 +45,7 @@ APP_TIMEZONE=America/New_York
 
 Use `Asia/Kolkata`, `Europe/London`, or another IANA timezone when appropriate.
 `PAYROLL_CRON_TIMEZONE` and `R2_BACKUP_CRON_TIMEZONE` are optional overrides.
-Normally leave them blank so both cron jobs follow the Settings tab. Restart
-API and worker services after changing the organization timezone.
+Normally leave them blank so both cron jobs follow the Settings tab. Cron jobs
+run in the worker process, so local and production environments must keep
+`npm run dev:worker` or `npm run worker` alive. Restart API and worker services
+after changing the organization timezone.

@@ -9,7 +9,9 @@ import {
   createAdvanceSchema,
   cycleQuerySchema,
   deleteAdvanceSchema,
+  manualDeductionCycleQuerySchema,
   updateAdvanceSchema,
+  upsertManualDeductionSchema,
 } from "./advance.validator";
 
 const router = Router();
@@ -30,6 +32,19 @@ router.post(
   AdvanceController.deductionPreview,
 );
 
+router.put(
+  "/manual-deductions",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  validate(upsertManualDeductionSchema),
+  AdvanceController.upsertManualDeduction,
+);
+
+router.delete(
+  "/manual-deductions/:id",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  AdvanceController.deleteManualDeduction,
+);
+
 router.get(
   "/",
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN, Role.USER),
@@ -43,6 +58,13 @@ router.get(
   allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
   validate(cycleQuerySchema),
   AdvanceController.listByCycle,
+);
+
+router.get(
+  "/employee/:employeeId/manual-deduction",
+  allowRoles(Role.ADMIN, Role.SUPER_ADMIN),
+  validate(manualDeductionCycleQuerySchema),
+  AdvanceController.getManualDeduction,
 );
 
 router.get(

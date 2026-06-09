@@ -1,4 +1,10 @@
-import { Prisma, Role, SalaryType, WeekStartsOn } from "@prisma/client";
+import {
+  AdvanceDeductionMode,
+  Prisma,
+  Role,
+  SalaryType,
+  WeekStartsOn,
+} from "@prisma/client";
 import { AdvanceRepository } from "./advance.repository";
 import { LedgerService } from "../ledger/ledger.service";
 import {
@@ -9,6 +15,7 @@ import { resolveEmployeeScope } from "../../shared/utils/employee-scope.util";
 import { assertAdvanceCycleNotLocked } from "../../shared/payroll/payroll-lock.util";
 import { CacheService } from "../../utils/cache";
 import { getBusinessDate } from "../../shared/time/business-date.util";
+import { SalaryCalculationService } from "../salary-calculation/salary-calculation.service";
 
 const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -20,8 +27,38 @@ const parseDateOnly = (value: string) => {
   return parsed;
 };
 
+const parseOptionalDateOnly = (value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) {
+    return undefined;
+  }
+
+  return parseDateOnly(value);
+};
+
+const parseDateRange = (query: any) => {
+  const from = parseOptionalDateOnly(query.from);
+  const to = parseOptionalDateOnly(query.to);
+
+  if (from && to && from > to) {
+    throw new Error("From date cannot be greater than To date");
+  }
+
+  return { from, to };
+};
+
+const parseOptionalBooleanQuery = (value: unknown) => {
+  if (value === undefined || value === "") {
+    return undefined;
+  }
+
+  return value === "true" || value === true;
+};
+
 const formatDate = (date: Date) => date.toISOString().slice(0, 10);
 const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
+const toMoneyNumber = (value: unknown) => roundMoney(Number(value ?? 0));
+const toOptionalMoneyNumber = (value: unknown) =>
+  value === null || value === undefined ? null : toMoneyNumber(value);
 const ADVANCE_READ_CACHE_PREFIX = "advance-read";
 const ADVANCE_READ_CACHE_TTL = 30;
 
@@ -117,6 +154,30 @@ const ensureSalaryAvailableForAdvanceCycle = async (params: {
   }
 };
 
+const getManualDeductionSalaryCapacity = async (params: {
+  employee: NonNullable<Awaited<ReturnType<typeof AdvanceRepository.findEmployee>>>;
+  periodStart: Date;
+  periodEnd: Date;
+  manualDeductionAmountOverride?: number;
+  skipActivePayrollSnapshot?: boolean;
+}) => {
+  const preview = await SalaryCalculationService.preview(
+    {
+      employeeId: params.employee.id,
+      periodStart: formatDate(params.periodStart),
+      periodEnd: formatDate(params.periodEnd),
+    },
+    {
+      employee: params.employee,
+      skipActivePayrollSnapshot: params.skipActivePayrollSnapshot ?? true,
+      manualDeductionAmountOverride:
+        params.manualDeductionAmountOverride ?? 0,
+    },
+  );
+
+  return roundMoney(Number(preview.result.grossSalary ?? 0));
+};
+
 const calculateCycle = (params: {
   salaryType: SalaryType;
   advanceDate: Date;
@@ -182,6 +243,59 @@ const calculateCycle = (params: {
   };
 };
 
+const calculateAdvanceDateCycle = (params: {
+  salaryType: SalaryType;
+  advanceDate: Date;
+  weekStartsOn: WeekStartsOn;
+}) => {
+  if (params.salaryType === SalaryType.WEEKLY) {
+    const cycleStartDate = getWeekStart(params.advanceDate, params.weekStartsOn);
+
+    return {
+      cycleStartDate,
+      cycleEndDate: getWeeklyCycleEndSaturday(cycleStartDate),
+    };
+  }
+
+  return {
+    cycleStartDate: getMonthStart(params.advanceDate),
+    cycleEndDate: getMonthEnd(params.advanceDate),
+  };
+};
+
+const validatePayrollPeriodLikeEmployeeCycle = async (params: {
+  employeeSalaryType: SalaryType;
+  periodStart: Date;
+  periodEnd: Date;
+}) => {
+  const setting = await AdvanceRepository.getSystemSetting();
+  const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
+
+  if (params.employeeSalaryType === SalaryType.MONTHLY) {
+    if (!isSameDate(params.periodStart, getMonthStart(params.periodStart))) {
+      throw new Error("Monthly manual deduction period must start on 1st day of month");
+    }
+
+    if (!isSameDate(params.periodEnd, getMonthEnd(params.periodStart))) {
+      throw new Error("Monthly manual deduction period must end on last day of month");
+    }
+
+    return;
+  }
+
+  const expectedStart = getWeekStart(params.periodStart, weekStartsOn);
+
+  if (!isSameDate(params.periodStart, expectedStart)) {
+    throw new Error(
+      `Weekly manual deduction period must start on configured week start day: ${weekStartsOn}`,
+    );
+  }
+
+  if (!isSameDate(params.periodEnd, getWeeklyCycleEndSaturday(params.periodStart))) {
+    throw new Error("Weekly manual deduction period must end on Saturday");
+  }
+};
+
 export class AdvanceService {
   static async deductionPreview(
     data: {
@@ -200,6 +314,12 @@ export class AdvanceService {
     }
 
     ensureAccessToEmployee(employee.role, currentUserRole);
+
+    if (employee.advanceDeductionMode === AdvanceDeductionMode.MANUAL) {
+      throw new Error(
+        "This employee uses manual advance deduction. Enter the cycle deduction amount from the advance module instead of using auto deduction preview.",
+      );
+    }
 
     const advanceDate = parseDateOnly(data.date);
     const deductionCycleStartDate = parseDateOnly(data.deductionCycleStartDate);
@@ -401,7 +521,7 @@ export class AdvanceService {
       employeeId: string;
       amount: number;
       date: string;
-      deductionCycleStartDate: string;
+      deductionCycleStartDate?: string;
       note?: string;
     },
     currentUserRole: Role,
@@ -419,7 +539,6 @@ export class AdvanceService {
     ensureAccessToEmployee(employee.role, currentUserRole);
 
     const advanceDate = parseDateOnly(data.date);
-    const deductionCycleStartDate = parseDateOnly(data.deductionCycleStartDate);
 
     ensureNotFutureDate(advanceDate);
     ensureDateOnOrAfterJoining({
@@ -431,28 +550,51 @@ export class AdvanceService {
     const setting = await AdvanceRepository.getSystemSetting();
     const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
 
-    const cycle = calculateCycle({
-      salaryType: employee.salaryType,
-      advanceDate,
-      deductionCycleStartDate,
-      weekStartsOn,
-    });
-    ensureDateOnOrAfterJoining({
-      date: cycle.cycleStartDate,
-      joiningDate: employee.joiningDate,
-      action: "Advance deduction cycle start",
-    });
+    let cycle;
 
-    await assertAdvanceCycleNotLocked({
-      employeeId: employee.id,
-      cycleStartDate: cycle.cycleStartDate,
-      cycleEndDate: cycle.cycleEndDate,
-    });
+    if (employee.advanceDeductionMode === AdvanceDeductionMode.MANUAL) {
+      cycle = calculateAdvanceDateCycle({
+        salaryType: employee.salaryType,
+        advanceDate,
+        weekStartsOn,
+      });
 
-    await ensureSalaryAvailableForAdvanceCycle({
-      employeeId: employee.id,
-      cycleStartDate: cycle.cycleStartDate,
-    });
+      await ensureSalaryAvailableForAdvanceCycle({
+        employeeId: employee.id,
+        cycleStartDate: cycle.cycleStartDate,
+      });
+    } else {
+      if (!data.deductionCycleStartDate) {
+        throw new Error("Deduction cycle is required for auto deduction mode");
+      }
+
+      const deductionCycleStartDate = parseDateOnly(
+        data.deductionCycleStartDate,
+      );
+
+      cycle = calculateCycle({
+        salaryType: employee.salaryType,
+        advanceDate,
+        deductionCycleStartDate,
+        weekStartsOn,
+      });
+      ensureDateOnOrAfterJoining({
+        date: cycle.cycleStartDate,
+        joiningDate: employee.joiningDate,
+        action: "Advance deduction cycle start",
+      });
+
+      await assertAdvanceCycleNotLocked({
+        employeeId: employee.id,
+        cycleStartDate: cycle.cycleStartDate,
+        cycleEndDate: cycle.cycleEndDate,
+      });
+
+      await ensureSalaryAvailableForAdvanceCycle({
+        employeeId: employee.id,
+        cycleStartDate: cycle.cycleStartDate,
+      });
+    }
     const advance = await AdvanceRepository.create({
       employeeId: employee.id,
       amount: data.amount,
@@ -481,13 +623,13 @@ export class AdvanceService {
 
   static async listAdvances(query: any, authUser: { id: string; role: Role }) {
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
     const { directEmployeeId, employeeWhere } = resolveEmployeeScope({
       authUser,
       employeeId: query.employeeId,
     });
 
-    const isSettled =
-      query.isSettled === undefined ? undefined : query.isSettled === "true";
+    const isSettled = parseOptionalBooleanQuery(query.isSettled);
     const cacheKey = CacheService.buildKey(
       ADVANCE_READ_CACHE_PREFIX,
       "list",
@@ -495,6 +637,8 @@ export class AdvanceService {
       authUser.id,
       query.employeeId ?? "all",
       isSettled === undefined ? "all" : String(isSettled),
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -510,11 +654,14 @@ export class AdvanceService {
       employeeId?: string;
       employeeWhere?: Prisma.EmployeeWhereInput;
       isSettled?: boolean;
+      from?: Date;
+      to?: Date;
     } = {
       skip,
       take,
       ...(directEmployeeId && { employeeId: directEmployeeId }),
       employeeWhere,
+      ...dateRange,
     };
 
     if (isSettled !== undefined) {
@@ -535,10 +682,15 @@ export class AdvanceService {
 
   static async myAdvances(employeeId: string, query: any) {
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
+    const isSettled = parseOptionalBooleanQuery(query.isSettled);
     const cacheKey = CacheService.buildKey(
       ADVANCE_READ_CACHE_PREFIX,
       "my",
       employeeId,
+      isSettled === undefined ? "all" : String(isSettled),
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -549,8 +701,15 @@ export class AdvanceService {
     }
 
     const [advances, total] = await Promise.all([
-      AdvanceRepository.listByEmployee(employeeId, { skip, take }),
-      AdvanceRepository.countByEmployee(employeeId),
+      AdvanceRepository.listByEmployee(
+        employeeId,
+        { skip, take },
+        { ...dateRange, isSettled },
+      ),
+      AdvanceRepository.countByEmployee(employeeId, {
+        ...dateRange,
+        isSettled,
+      }),
     ]);
 
     const result = {
@@ -599,10 +758,15 @@ export class AdvanceService {
     ensureAccessToEmployee(employee.role, currentUserRole);
 
     const { page, limit, skip, take } = getPagination(query);
+    const dateRange = parseDateRange(query);
+    const isSettled = parseOptionalBooleanQuery(query.isSettled);
     const cacheKey = CacheService.buildKey(
       ADVANCE_READ_CACHE_PREFIX,
       "employee",
       employeeId,
+      isSettled === undefined ? "all" : String(isSettled),
+      dateRange.from ? formatDate(dateRange.from) : "any-from",
+      dateRange.to ? formatDate(dateRange.to) : "any-to",
       page,
       limit,
     );
@@ -613,8 +777,15 @@ export class AdvanceService {
     }
 
     const [advances, total] = await Promise.all([
-      AdvanceRepository.listByEmployee(employeeId, { skip, take }),
-      AdvanceRepository.countByEmployee(employeeId),
+      AdvanceRepository.listByEmployee(
+        employeeId,
+        { skip, take },
+        { ...dateRange, isSettled },
+      ),
+      AdvanceRepository.countByEmployee(employeeId, {
+        ...dateRange,
+        isSettled,
+      }),
     ]);
 
     const result = {
@@ -672,6 +843,289 @@ export class AdvanceService {
     return advances;
   }
 
+  static async getManualDeduction(
+    employeeId: string,
+    periodStartValue: string,
+    periodEndValue: string,
+    currentUserRole: Role,
+  ) {
+    const employee = await AdvanceRepository.findEmployee(employeeId);
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    ensureAccessToEmployee(employee.role, currentUserRole);
+
+    const periodStart = parseDateOnly(periodStartValue);
+    const periodEnd = parseDateOnly(periodEndValue);
+
+    if (periodStart > periodEnd) {
+      throw new Error("periodStart cannot be greater than periodEnd");
+    }
+
+    const [manualDeduction, outstandingAdvances, advanceHistory] = await Promise.all([
+      AdvanceRepository.getManualDeduction(employee.id, periodStart, periodEnd),
+      AdvanceRepository.getOutstandingAdvances(employee.id, periodEnd),
+      AdvanceRepository.getAdvanceHistoryUntil(employee.id, periodEnd),
+    ]);
+    const payrollSnapshot = manualDeduction?.lockedByPayrollId
+      ? await AdvanceRepository.getPayrollSnapshot(manualDeduction.lockedByPayrollId)
+      : null;
+    const snapshotAdvanceBreakdown =
+      (payrollSnapshot?.advanceBreakdown as any) ?? null;
+    const snapshotOutstandingTotal = toOptionalMoneyNumber(
+      snapshotAdvanceBreakdown?.manualOutstandingTotal,
+    );
+    const snapshotDeductionAmount = payrollSnapshot
+      ? toOptionalMoneyNumber(
+          snapshotAdvanceBreakdown?.advanceDeduction ??
+            payrollSnapshot.advanceDeduction ??
+            manualDeduction?.amount,
+        )
+      : null;
+    const snapshotSalaryPayableAmount = payrollSnapshot
+      ? toMoneyNumber(payrollSnapshot.grossSalary)
+      : null;
+    const snapshotBalanceAfterDeduction =
+      snapshotOutstandingTotal !== null && snapshotDeductionAmount !== null
+        ? Math.max(
+            roundMoney(snapshotOutstandingTotal - snapshotDeductionAmount),
+            0,
+          )
+        : null;
+    const outstandingTotal = roundMoney(
+      outstandingAdvances.reduce(
+        (sum, advance) => sum + Number(advance.remainingAmount),
+        0,
+      ),
+    );
+    const totalAdvanceReceived = roundMoney(
+      advanceHistory.reduce(
+        (sum, advance) => sum + Number(advance.amount),
+        0,
+      ),
+    );
+    const totalAdvanceDeducted = roundMoney(
+      advanceHistory.reduce(
+        (sum, advance) => sum + Number(advance.settledAmount ?? 0),
+        0,
+      ),
+    );
+    const currentCycleAdvances = advanceHistory.filter(
+      (advance) =>
+        advance.date >= periodStart &&
+        advance.date <= periodEnd,
+    );
+    const cycleAdvanceReceived = roundMoney(
+      currentCycleAdvances.reduce(
+        (sum, advance) => sum + Number(advance.amount),
+        0,
+      ),
+    );
+    const cycleAdvanceDeducted = roundMoney(
+      currentCycleAdvances.reduce(
+        (sum, advance) => sum + Number(advance.settledAmount ?? 0),
+        0,
+      ),
+    );
+    const cycleDeductionAmount = roundMoney(Number(manualDeduction?.amount ?? 0));
+    let salaryPayableAmount: number | null = null;
+    let salaryCapacityError: string | null = null;
+
+    if (snapshotSalaryPayableAmount !== null) {
+      salaryPayableAmount = snapshotSalaryPayableAmount;
+    } else {
+      try {
+        salaryPayableAmount = await getManualDeductionSalaryCapacity({
+          employee,
+          periodStart,
+          periodEnd,
+          skipActivePayrollSnapshot: !manualDeduction?.lockedByPayrollId,
+        });
+      } catch (error) {
+        salaryCapacityError =
+          error instanceof Error
+            ? error.message
+            : "Unable to calculate salary capacity";
+      }
+    }
+
+    const effectiveOutstandingTotal =
+      snapshotOutstandingTotal ?? outstandingTotal;
+    const effectiveDeductionAmount =
+      snapshotDeductionAmount ?? cycleDeductionAmount;
+    const balanceAfterSavedDeduction =
+      snapshotBalanceAfterDeduction ??
+      (manualDeduction
+        ? Math.max(
+            roundMoney(effectiveOutstandingTotal - Number(manualDeduction.amount)),
+            0,
+          )
+        : effectiveOutstandingTotal);
+    const maxDeductibleAmount =
+      salaryPayableAmount === null
+        ? effectiveOutstandingTotal
+        : Math.min(effectiveOutstandingTotal, salaryPayableAmount);
+
+    return {
+      employee: {
+        id: employee.id,
+        employeeCode: employee.employeeCode,
+        name: employee.name,
+        salaryType: employee.salaryType,
+        advanceDeductionMode: employee.advanceDeductionMode,
+      },
+      period: {
+        periodStart: formatDate(periodStart),
+        periodEnd: formatDate(periodEnd),
+      },
+      manualDeduction,
+      outstandingTotal: effectiveOutstandingTotal,
+      salaryPayableAmount,
+      salaryCapacityError,
+      maxDeductibleAmount,
+      cycleAdvanceReceived,
+      cycleAdvanceDeducted,
+      cycleDeductionAmount: effectiveDeductionAmount,
+      totalAdvanceReceived,
+      totalAdvanceDeducted,
+      balanceAfterSavedDeduction,
+      outstandingAdvances: advanceHistory,
+      currentCycleAdvances,
+    };
+  }
+
+  static async upsertManualDeduction(
+    data: {
+      employeeId: string;
+      periodStart: string;
+      periodEnd: string;
+      amount: number;
+      note?: string;
+    },
+    currentUserRole: Role,
+    currentUserId?: string,
+  ) {
+    const employee = await AdvanceRepository.findEmployee(data.employeeId);
+
+    if (!employee) {
+      throw new Error("Employee not found");
+    }
+
+    ensureAccessToEmployee(employee.role, currentUserRole);
+
+    if (employee.advanceDeductionMode !== AdvanceDeductionMode.MANUAL) {
+      throw new Error("Manual advance deduction is allowed only for employees in manual deduction mode");
+    }
+
+    const periodStart = parseDateOnly(data.periodStart);
+    const periodEnd = parseDateOnly(data.periodEnd);
+
+    if (periodStart > periodEnd) {
+      throw new Error("periodStart cannot be greater than periodEnd");
+    }
+
+    await validatePayrollPeriodLikeEmployeeCycle({
+      employeeSalaryType: employee.salaryType,
+      periodStart,
+      periodEnd,
+    });
+    ensureDateOnOrAfterJoining({
+      date: periodStart,
+      joiningDate: employee.joiningDate,
+      action: "Manual advance deduction period start",
+    });
+
+    await ensureSalaryAvailableForAdvanceCycle({
+      employeeId: employee.id,
+      cycleStartDate: periodStart,
+    });
+
+    const existing = await AdvanceRepository.getManualDeduction(
+      employee.id,
+      periodStart,
+      periodEnd,
+    );
+
+    if (existing?.lockedByPayrollId) {
+      throw new Error("Manual deduction is already locked by generated payroll");
+    }
+
+    const outstandingAdvances = await AdvanceRepository.getOutstandingAdvances(
+      employee.id,
+      periodEnd,
+    );
+    const outstandingTotal = roundMoney(
+      outstandingAdvances.reduce(
+        (sum, advance) => sum + Number(advance.remainingAmount),
+        0,
+      ),
+    );
+
+    if (data.amount > outstandingTotal) {
+      throw new Error(
+        `Manual deduction cannot exceed pending advance balance ${outstandingTotal}`,
+      );
+    }
+
+    const salaryPayableAmount = await getManualDeductionSalaryCapacity({
+      employee,
+      periodStart,
+      periodEnd,
+      manualDeductionAmountOverride: data.amount,
+    });
+
+    if (data.amount > salaryPayableAmount) {
+      throw new Error(
+        `Manual advance deduction cannot exceed payable salary ${salaryPayableAmount}. You can deduct up to ${salaryPayableAmount} for this cycle.`,
+      );
+    }
+
+    const manualDeduction = await AdvanceRepository.upsertManualDeduction({
+      employeeId: employee.id,
+      periodStart,
+      periodEnd,
+      salaryType: employee.salaryType,
+      amount: data.amount,
+      ...(data.note !== undefined && { note: data.note }),
+      ...(currentUserId && { createdById: currentUserId }),
+    });
+
+    invalidateAdvanceReadCaches();
+
+    return {
+      manualDeduction,
+      outstandingTotal,
+      salaryPayableAmount,
+      maxDeductibleAmount: Math.min(outstandingTotal, salaryPayableAmount),
+      balanceAfterSavedDeduction: roundMoney(outstandingTotal - data.amount),
+    };
+  }
+
+  static async deleteManualDeduction(
+    id: string,
+    currentUserRole: Role,
+  ) {
+    const manualDeduction = await AdvanceRepository.findManualDeductionById(id);
+
+    if (!manualDeduction) {
+      throw new Error("Manual advance deduction not found");
+    }
+
+    ensureAccessToEmployee(manualDeduction.employee.role, currentUserRole);
+
+    if (manualDeduction.lockedByPayrollId) {
+      throw new Error("Manual deduction is already locked by generated payroll");
+    }
+
+    const deleted = await AdvanceRepository.deleteManualDeduction(id);
+
+    invalidateAdvanceReadCaches();
+
+    return deleted;
+  }
+
   static async updateAdvance(
     id: string,
     data: {
@@ -702,10 +1156,6 @@ export class AdvanceService {
     });
 
     const nextAdvanceDate = data.date ? parseDateOnly(data.date) : advance.date;
-    const nextDeductionCycleStart = data.deductionCycleStartDate
-      ? parseDateOnly(data.deductionCycleStartDate)
-      : advance.cycleStartDate;
-
     ensureNotFutureDate(nextAdvanceDate);
     ensureDateOnOrAfterJoining({
       date: nextAdvanceDate,
@@ -716,23 +1166,35 @@ export class AdvanceService {
     const setting = await AdvanceRepository.getSystemSetting();
     const weekStartsOn = setting?.weekStartsOn ?? WeekStartsOn.MONDAY;
 
-    const cycle = calculateCycle({
-      salaryType: advance.employee.salaryType,
-      advanceDate: nextAdvanceDate,
-      deductionCycleStartDate: nextDeductionCycleStart,
-      weekStartsOn,
-    });
-    ensureDateOnOrAfterJoining({
-      date: cycle.cycleStartDate,
-      joiningDate: advance.employee.joiningDate,
-      action: "Advance deduction cycle start",
-    });
+    const cycle =
+      advance.employee.advanceDeductionMode === AdvanceDeductionMode.MANUAL
+        ? calculateAdvanceDateCycle({
+            salaryType: advance.employee.salaryType,
+            advanceDate: nextAdvanceDate,
+            weekStartsOn,
+          })
+        : calculateCycle({
+            salaryType: advance.employee.salaryType,
+            advanceDate: nextAdvanceDate,
+            deductionCycleStartDate: data.deductionCycleStartDate
+              ? parseDateOnly(data.deductionCycleStartDate)
+              : advance.cycleStartDate,
+            weekStartsOn,
+          });
 
-    await assertAdvanceCycleNotLocked({
-      employeeId: advance.employeeId,
-      cycleStartDate: cycle.cycleStartDate,
-      cycleEndDate: cycle.cycleEndDate,
-    });
+    if (advance.employee.advanceDeductionMode === AdvanceDeductionMode.AUTO) {
+      ensureDateOnOrAfterJoining({
+        date: cycle.cycleStartDate,
+        joiningDate: advance.employee.joiningDate,
+        action: "Advance deduction cycle start",
+      });
+
+      await assertAdvanceCycleNotLocked({
+        employeeId: advance.employeeId,
+        cycleStartDate: cycle.cycleStartDate,
+        cycleEndDate: cycle.cycleEndDate,
+      });
+    }
 
     const updateData: {
       amount?: number;
@@ -752,7 +1214,10 @@ export class AdvanceService {
       updateData.date = nextAdvanceDate;
     }
 
-    if (data.deductionCycleStartDate) {
+    if (
+      data.deductionCycleStartDate ||
+      advance.employee.advanceDeductionMode === AdvanceDeductionMode.MANUAL
+    ) {
       updateData.cycleStartDate = cycle.cycleStartDate;
       updateData.cycleEndDate = cycle.cycleEndDate;
     }
@@ -760,10 +1225,12 @@ export class AdvanceService {
     if (data.note !== undefined) {
       updateData.note = data.note;
     }
-    await ensureSalaryAvailableForAdvanceCycle({
-      employeeId: advance.employeeId,
-      cycleStartDate: cycle.cycleStartDate,
-    });
+    if (advance.employee.advanceDeductionMode === AdvanceDeductionMode.AUTO) {
+      await ensureSalaryAvailableForAdvanceCycle({
+        employeeId: advance.employeeId,
+        cycleStartDate: cycle.cycleStartDate,
+      });
+    }
     const updatedAdvance = await AdvanceRepository.update(id, updateData);
 
     invalidateAdvanceReadCaches();

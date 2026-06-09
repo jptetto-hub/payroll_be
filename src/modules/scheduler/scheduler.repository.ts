@@ -1,5 +1,6 @@
 import { prisma } from "../../config/prisma";
 import {
+  AdvanceDeductionMode,
   EmployeeStatus,
   PayrollStatus,
   Prisma,
@@ -152,6 +153,84 @@ export class SchedulerRepository {
         id: "asc",
       },
     });
+  }
+
+  static async findManualAdvanceReminderEmployees(
+    targetPeriods: SchedulerTargetPeriod[],
+  ) {
+    const result = [];
+
+    for (const period of targetPeriods) {
+      const employees = await prisma.employee.findMany({
+        where: {
+          status: EmployeeStatus.ACTIVE,
+          salaryType: period.salaryType,
+          advanceDeductionMode: AdvanceDeductionMode.MANUAL,
+          advances: {
+            some: {
+              date: {
+                lte: period.periodEnd,
+              },
+              isSettled: false,
+              remainingAmount: {
+                gt: 0,
+              },
+            },
+          },
+          advanceManualDeductions: {
+            none: {
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+            },
+          },
+          payrolls: {
+            none: {
+              periodStart: period.periodStart,
+              periodEnd: period.periodEnd,
+              status: {
+                in: [PayrollStatus.GENERATED, PayrollStatus.PAID],
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          employeeCode: true,
+          name: true,
+          salaryType: true,
+          advances: {
+            where: {
+              date: {
+                lte: period.periodEnd,
+              },
+              isSettled: false,
+              remainingAmount: {
+                gt: 0,
+              },
+            },
+            select: {
+              id: true,
+              remainingAmount: true,
+              date: true,
+            },
+            orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+          },
+        },
+        orderBy: {
+          employeeCode: "asc",
+        },
+      });
+
+      result.push(
+        ...employees.map((employee) => ({
+          ...employee,
+          periodStart: period.periodStart,
+          periodEnd: period.periodEnd,
+        })),
+      );
+    }
+
+    return result;
   }
 
   static async getSystemSetting() {

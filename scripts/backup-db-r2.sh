@@ -54,9 +54,10 @@ assert_r2_configuration "$R2_ACCOUNT_ID" "$R2_ENDPOINT_URL"
 DATABASE_OPERATION_URL=$(get_database_admin_url)
 DATABASE_TARGET=$(describe_database_target "$DATABASE_OPERATION_URL")
 TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
-ISO_WEEK=$(date +"%G-%V")
 DAY_OF_WEEK=$(date +"%u")
 DAY_OF_MONTH=$(date +"%d")
+PREVIOUS_ISO_WEEK=$(node -e 'const d = new Date(); d.setDate(d.getDate() - 7); const copy = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = copy.getUTCDay() || 7; copy.setUTCDate(copy.getUTCDate() + 4 - day); const yearStart = new Date(Date.UTC(copy.getUTCFullYear(), 0, 1)); const week = Math.ceil((((copy.getTime() - yearStart.getTime()) / 86400000) + 1) / 7); console.log(`${copy.getUTCFullYear()}-${String(week).padStart(2, "0")}`);')
+PREVIOUS_MONTH=$(node -e 'const d = new Date(); d.setMonth(d.getMonth() - 1, 1); console.log(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);')
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/payroll-r2-backup.XXXXXX")
 BACKUP_FILE="$TEMP_DIR/payroll_${TIMESTAMP}.sql.gz"
 PERMISSION_CHECK_FILE="$TEMP_DIR/r2-permission-check.txt"
@@ -167,12 +168,12 @@ fi
 
 if [ "$R2_BACKUP_MODE" = "weekly" ] ||
   { [ "$R2_BACKUP_MODE" = "scheduled" ] && [ "$DAY_OF_WEEK" = "$R2_WEEKLY_BACKUP_DAY" ]; }; then
-  upload_backup "weekly/payroll_week_${ISO_WEEK}.sql.gz"
+  upload_backup "weekly/payroll_week_${PREVIOUS_ISO_WEEK}.sql.gz"
 fi
 
 if [ "$R2_BACKUP_MODE" = "monthly" ] ||
   { [ "$R2_BACKUP_MODE" = "scheduled" ] && [ "$DAY_OF_MONTH" = "$R2_MONTHLY_BACKUP_DAY" ]; }; then
-  upload_backup "monthly/payroll_$(date +"%Y-%m").sql.gz"
+  upload_backup "monthly/payroll_${PREVIOUS_MONTH}.sql.gz"
 fi
 
 echo "Cloudflare R2 backup completed."

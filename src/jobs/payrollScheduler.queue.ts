@@ -1,7 +1,7 @@
-import { Queue } from "bullmq";
+import { Queue, type ConnectionOptions } from "bullmq";
 import { redis } from "../config/redis";
 
-export const redisConnection = redis;
+export const redisConnection = redis as unknown as ConnectionOptions;
 
 export const payrollSchedulerQueue = new Queue("payroll-scheduler", {
   connection: redisConnection,

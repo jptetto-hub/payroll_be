@@ -6,6 +6,25 @@ import { SchedulerRepository } from "./scheduler.repository";
 import { payrollSchedulerQueue } from "../../jobs/payrollScheduler.queue";
 
 export class SchedulerController {
+  static async manualAdvanceReminders(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const result =
+        await SchedulerService.getManualAdvanceDeductionReminders();
+
+      res.json({
+        success: true,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async runPayroll(req: Request, res: Response, next: NextFunction) {
     try {
       await SchedulerService.recoverStaleRuns();
