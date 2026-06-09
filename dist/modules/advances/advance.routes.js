@@ -1,0 +1,25 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const client_1 = require("@prisma/client");
+const advance_controller_1 = require("./advance.controller");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const rbac_middleware_1 = require("../../middlewares/rbac.middleware");
+const validate_middleware_1 = require("../../middlewares/validate.middleware");
+const advance_validator_1 = require("./advance.validator");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authMiddleware);
+router.post("/", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.createAdvanceSchema), advance_controller_1.AdvanceController.create);
+router.post("/deduction-preview", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.advanceDeductionPreviewSchema), advance_controller_1.AdvanceController.deductionPreview);
+router.put("/manual-deductions", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.upsertManualDeductionSchema), advance_controller_1.AdvanceController.upsertManualDeduction);
+router.delete("/manual-deductions/:id", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), advance_controller_1.AdvanceController.deleteManualDeduction);
+router.get("/", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN, client_1.Role.USER), advance_controller_1.AdvanceController.list);
+router.get("/my", (0, rbac_middleware_1.allowRoles)(client_1.Role.USER), advance_controller_1.AdvanceController.my);
+router.get("/employee/:employeeId/cycle", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.cycleQuerySchema), advance_controller_1.AdvanceController.listByCycle);
+router.get("/employee/:employeeId/manual-deduction", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.manualDeductionCycleQuerySchema), advance_controller_1.AdvanceController.getManualDeduction);
+router.get("/employee/:employeeId", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), advance_controller_1.AdvanceController.listByEmployee);
+router.get("/:id", advance_controller_1.AdvanceController.getById);
+router.patch("/:id", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.updateAdvanceSchema), advance_controller_1.AdvanceController.update);
+router.delete("/:id", (0, rbac_middleware_1.allowRoles)(client_1.Role.SUPER_ADMIN), (0, validate_middleware_1.validate)(advance_validator_1.deleteAdvanceSchema), advance_controller_1.AdvanceController.delete);
+exports.default = router;
+//# sourceMappingURL=advance.routes.js.map

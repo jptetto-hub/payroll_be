@@ -1,0 +1,28 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.env = void 0;
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is required in production");
+}
+const jwtExpiresIn = (process.env.JWT_EXPIRES_IN ||
+    "7d");
+exports.env = {
+    port: process.env.PORT || 5000,
+    databaseUrl: process.env.DATABASE_URL,
+    readDatabaseUrl: process.env.READ_DATABASE_URL || process.env.DATABASE_URL,
+    jwtSecret: process.env.JWT_SECRET || "dev-only-secret",
+    jwtExpiresIn,
+    authCookieName: process.env.AUTH_COOKIE_NAME || "payroll_session",
+    authIdleTimeoutSeconds: Number(process.env.AUTH_IDLE_TIMEOUT_SECONDS || 900),
+    bcryptSaltRounds: Number(process.env.BCRYPT_ROUNDS || process.env.BCRYPT_SALT_ROUNDS || 10),
+    redisHost: process.env.REDIS_HOST || "127.0.0.1",
+    redisPort: Number(process.env.REDIS_PORT || 6379),
+    redisPassword: process.env.REDIS_PASSWORD || undefined,
+    redisUrl: process.env.REDIS_URL || undefined,
+};
+//# sourceMappingURL=env.js.map

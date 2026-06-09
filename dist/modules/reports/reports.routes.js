@@ -1,0 +1,28 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const client_1 = require("@prisma/client");
+const reports_controller_1 = require("./reports.controller");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const rbac_middleware_1 = require("../../middlewares/rbac.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authMiddleware);
+router.get("/payroll-summary", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.payrollSummary);
+router.get("/employee-payroll", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.employeePayroll);
+router.get("/ledger-summary", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.ledgerSummary);
+router.get("/attendance-summary", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.attendanceSummaryRaw);
+router.get("/advance-outstanding", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.advanceOutstanding);
+router.get("/salary", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.salary);
+router.get("/salary/export", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.salaryExport);
+router.get("/attendance", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.attendance);
+router.get("/attendance/export", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.attendanceExport);
+router.get("/advance", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.advance);
+router.get("/advance/export", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.advanceExport);
+router.get("/salary/export/excel", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.salaryExportExcel);
+router.get("/attendance/export/excel", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.attendanceExportExcel);
+router.get("/advance/export/excel", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.advanceExportExcel);
+router.get("/all-in-one/export/excel", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.allInOneExportExcel);
+router.get("/all-in-one/export", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.allInOneExport);
+router.get("/all-in-one", (0, rbac_middleware_1.allowRoles)(client_1.Role.ADMIN, client_1.Role.SUPER_ADMIN), reports_controller_1.ReportsController.allInOne);
+exports.default = router;
+//# sourceMappingURL=reports.routes.js.map
