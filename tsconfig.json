@@ -10,7 +10,7 @@
     "types": ["node"],
 
     "sourceMap": true,
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "verbatimModuleSyntax": false,
