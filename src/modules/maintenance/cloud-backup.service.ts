@@ -207,7 +207,7 @@ const getRetentionCutoff = (type: BackupType) => {
   const cutoff = new Date();
   const value =
     type === "daily"
-      ? Number(process.env.R2_DAILY_RETENTION_DAYS || 15)
+      ? Number(process.env.R2_DAILY_RETENTION_DAYS || 6)
       : type === "weekly"
         ? Number(process.env.R2_WEEKLY_RETENTION_WEEKS || 4)
         : Number(process.env.R2_MONTHLY_RETENTION_MONTHS || 2);
@@ -238,7 +238,7 @@ export class CloudBackupService {
       bucket: config.bucket,
       objects,
       retention: {
-        dailyDays: Number(process.env.R2_DAILY_RETENTION_DAYS || 15),
+        dailyDays: Number(process.env.R2_DAILY_RETENTION_DAYS || 6),
         weeklyWeeks: Number(process.env.R2_WEEKLY_RETENTION_WEEKS || 4),
         monthlyMonths: Number(process.env.R2_MONTHLY_RETENTION_MONTHS || 2),
         remoteDeleteEnabled: process.env.R2_REMOTE_DELETE_ENABLED === "true",

@@ -25,6 +25,8 @@ NODE_ENV=production
 CORS_ORIGIN="https://your-frontend-domain.com,https://admin.your-domain.com"
 JWT_SECRET="very_long_random_secret_minimum_64_chars"
 JWT_EXPIRES_IN="7d"
+AUTH_COOKIE_NAME="payroll_session"
+AUTH_IDLE_TIMEOUT_SECONDS=1800
 BCRYPT_ROUNDS=12
 GENERAL_RATE_LIMIT_MAX=1000
 AUTH_RATE_LIMIT_MAX=20
@@ -40,3 +42,4 @@ ENABLE_PERFORMANCE_LOG=false
 - USER routes must enforce ownership in service logic.
 - SUPER_ADMIN-only routes should stay strict for payroll cancellation, recalculation, scheduler run, maintenance, and destructive attendance actions.
 - File import routes should use file type checks, size limits, row validation, and background jobs before production use.
+- Browser sessions use an HTTP-only cookie and a 30-minute idle timeout. Keep `NODE_ENV=production` so the cookie is marked secure behind HTTPS.

@@ -79,9 +79,9 @@ npx prisma generate
 
 ## Retention
 
-Recommended local backup retention:
+Recommended production backup retention:
 
-- Daily backups: keep 15 days.
+- Daily backups: keep 6 days.
 - Weekly backups: keep 4 weeks.
 - Monthly backups: keep 2 months.
 - Yearly backups: keep 7 years.
@@ -107,7 +107,7 @@ APP_TIMEZONE=UTC
 # Optional override. When blank, R2 backup cron uses APP_TIMEZONE.
 R2_BACKUP_CRON_TIMEZONE=
 R2_REMOTE_DELETE_ENABLED=false
-R2_DAILY_RETENTION_DAYS=15
+R2_DAILY_RETENTION_DAYS=6
 R2_WEEKLY_RETENTION_WEEKS=4
 R2_MONTHLY_RETENTION_MONTHS=2
 ```
@@ -203,7 +203,7 @@ VPS cron instead. Do not enable both schedulers:
 
 Recommended R2 lifecycle retention:
 
-- `daily/`: delete objects after 15 days.
+- `daily/`: delete objects after 6 days.
 - `weekly/`: delete objects after 28 days.
 - `monthly/`: delete objects after 2 months.
 
