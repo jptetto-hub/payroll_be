@@ -10,8 +10,8 @@ async function main() {
     update: {},
     create: {
       employeeCode: "EMP001",
-      name: "Super Admin",
-      email: "superadmin@payroll.com",
+      name: "Jayaprakash Srinivasan",
+      email: "jp13288@gmail.com",
       phone: "9597224123",
       password,
       designation: "CEO",
