@@ -67,13 +67,30 @@ const ensureNotFutureDate = (date: Date) => {
 const isSunday = (date: Date) => date.getUTCDay() === 0;
 
 const hasOtInput = (input: AttendanceOtInput) =>
-  Number(input.otHours ?? 0) > 0 || Boolean(input.otStartTime && input.otEndTime);
+  Number(input.otHours ?? 0) > 0 ||
+  Boolean(input.otStartTime && input.otEndTime) ||
+  Boolean(input.otEntries?.length);
 
 const ensureSundayAttendanceIsOtOnly = (
   attendanceDate: Date,
   input: AttendanceOtInput,
+  options?: { allowExplicitOtClear?: boolean },
 ) => {
   if (!isSunday(attendanceDate)) {
+    return;
+  }
+
+  const explicitOtClear =
+    options?.allowExplicitOtClear &&
+    ((Array.isArray(input.otEntries) && input.otEntries.length === 0) ||
+      (hasOwn(input, "otHours") &&
+        Number(input.otHours ?? 0) === 0 &&
+        !input.otStartTime &&
+        !input.otEndTime &&
+        !input.checkInTime &&
+        !input.checkOutTime));
+
+  if (explicitOtClear) {
     return;
   }
 
@@ -109,6 +126,10 @@ type AttendanceOtInput = {
   checkOutTime?: string | Date | null;
   otStartTime?: string | Date | null;
   otEndTime?: string | Date | null;
+  otEntries?: {
+    startTime?: string | Date | null;
+    endTime?: string | Date | null;
+  }[];
   otHours?: number | null;
   otManualOverride?: boolean;
   otOverrideReason?: string | null;
@@ -134,6 +155,10 @@ const buildAttendancePayload = async (
   const checkOutTime = parseOptionalDateTime(input.checkOutTime);
   const otStartTime = parseOptionalDateTime(input.otStartTime);
   const otEndTime = parseOptionalDateTime(input.otEndTime);
+  const otEntries = input.otEntries?.map((entry) => ({
+    startTime: parseOptionalDateTime(entry.startTime),
+    endTime: parseOptionalDateTime(entry.endTime),
+  }));
   const setting = settings
     ? OvertimeService.resolveSettingFromList(settings, attendanceDate)
     : undefined;
@@ -143,6 +168,7 @@ const buildAttendancePayload = async (
     checkOutTime,
     otStartTime,
     otEndTime,
+    ...(otEntries !== undefined && { otEntries }),
     ...(input.otHours !== undefined && { otHours: input.otHours }),
     ...(input.otManualOverride !== undefined && {
       otManualOverride: input.otManualOverride,
@@ -691,10 +717,13 @@ export class AttendanceService {
       otEndTime: hasOwn(data, "otEndTime")
         ? data.otEndTime
         : (attendance as any).otEndTime,
+      otEntries: hasOwn(data, "otEntries")
+        ? data.otEntries
+        : ((attendance as any).otBreakdown as any)?.entries,
       otHours: hasOwn(data, "otHours") && data.otHours !== undefined
         ? data.otHours
         : Number((attendance as any).otHours ?? 0),
-    });
+    }, { allowExplicitOtClear: true });
 
     const updatedAttendance = await AttendanceRepository.update(id, {
       status: data.status,
@@ -711,6 +740,9 @@ export class AttendanceService {
         otEndTime: hasOwn(data, "otEndTime")
           ? data.otEndTime
           : (attendance as any).otEndTime,
+        otEntries: hasOwn(data, "otEntries")
+          ? data.otEntries
+          : ((attendance as any).otBreakdown as any)?.entries,
         otHours: hasOwn(data, "otHours") && data.otHours !== undefined
           ? data.otHours
           : Number((attendance as any).otHours ?? 0),
@@ -827,10 +859,13 @@ export class AttendanceService {
         otEndTime: hasOwn(record, "otEndTime")
           ? record.otEndTime
           : (attendance as any).otEndTime,
+        otEntries: hasOwn(record, "otEntries")
+          ? record.otEntries
+          : ((attendance as any).otBreakdown as any)?.entries,
         otHours: hasOwn(record, "otHours") && record.otHours !== undefined
           ? record.otHours
           : Number((attendance as any).otHours ?? 0),
-      });
+      }, { allowExplicitOtClear: true });
 
       return {
         attendanceId: record.attendanceId,
@@ -850,6 +885,9 @@ export class AttendanceService {
             otEndTime: hasOwn(record, "otEndTime")
               ? record.otEndTime
               : (attendance as any).otEndTime,
+            otEntries: hasOwn(record, "otEntries")
+              ? record.otEntries
+              : ((attendance as any).otBreakdown as any)?.entries,
             otHours: hasOwn(record, "otHours") && record.otHours !== undefined
               ? record.otHours
               : Number((attendance as any).otHours ?? 0),

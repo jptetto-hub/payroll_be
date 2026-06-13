@@ -98,6 +98,275 @@ const payrollSelect = {
   },
 };
 
+const activePayrollStatuses = ["GENERATED", "PAID", "SUPERSEDED"] as const;
+
+async function getOpeningAdvanceBalanceMap(
+  employeeIds: string[],
+  fromDate?: Date,
+) {
+  const uniqueEmployeeIds = [...new Set(employeeIds)].filter(Boolean);
+
+  if (!fromDate || uniqueEmployeeIds.length === 0) {
+    return new Map<string, number>();
+  }
+
+  const [advanceOpening, payrollDeductions] = await Promise.all([
+    readPrisma.advancePayment.groupBy({
+      by: ["employeeId"],
+      where: {
+        employeeId: {
+          in: uniqueEmployeeIds,
+        },
+        date: {
+          lt: fromDate,
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    }),
+    readPrisma.payroll.groupBy({
+      by: ["employeeId"],
+      where: {
+        employeeId: {
+          in: uniqueEmployeeIds,
+        },
+        periodEnd: {
+          lt: fromDate,
+        },
+        status: {
+          in: [...activePayrollStatuses] as any,
+        },
+      },
+      _sum: {
+        advanceDeduction: true,
+        carryForwardApplied: true,
+      },
+    }),
+  ]);
+
+  const map = new Map<string, number>();
+
+  for (const row of advanceOpening) {
+    map.set(row.employeeId, Number(row._sum.amount ?? 0));
+  }
+
+  for (const row of payrollDeductions) {
+    const opening = map.get(row.employeeId) ?? 0;
+    const deducted =
+      Number(row._sum.advanceDeduction ?? 0) +
+      Number(row._sum.carryForwardApplied ?? 0);
+
+    map.set(row.employeeId, Math.max(opening - deducted, 0));
+  }
+
+  return map;
+}
+
+function attachOpeningAdvanceBalance<T extends { employeeId: string }>(
+  rows: T[],
+  openingBalanceMap: Map<string, number>,
+) {
+  return rows.map((row) => ({
+    ...row,
+    openingAdvanceBalance: openingBalanceMap.get(row.employeeId) ?? 0,
+  }));
+}
+
+function toNumber(value: unknown) {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sumBy<T>(items: T[] | undefined, read: (item: T) => number) {
+  return (items ?? []).reduce((sum, item) => sum + read(item), 0);
+}
+
+function getOpeningAdvanceBalanceFromPayrollSnapshot(payroll: {
+  advanceBreakdown?: unknown;
+  advanceDeduction?: unknown;
+  carryForwardApplied?: unknown;
+}) {
+  const breakdown = (payroll.advanceBreakdown as any) ?? {};
+  const advances = Array.isArray(breakdown.advances)
+    ? breakdown.advances
+    : [];
+  const pendingCarryForwards = Array.isArray(
+    breakdown.carryForwardApplied?.pendingCarryForwards,
+  )
+    ? breakdown.carryForwardApplied.pendingCarryForwards
+    : [];
+  const manualOutstanding = toNumber(breakdown.manualOutstandingTotal);
+  const advanceOutstanding =
+    manualOutstanding > 0
+      ? manualOutstanding
+      : sumBy(advances, (advance: any) =>
+          toNumber(
+            advance.previousRemainingAmount ??
+              advance.remainingAmount ??
+              advance.amount,
+          ),
+        );
+  const carryForwardOutstanding = sumBy(
+    pendingCarryForwards,
+    (carryForward: any) =>
+      toNumber(carryForward.remainingAmount ?? carryForward.amount),
+  );
+  const snapshotOpening = advanceOutstanding + carryForwardOutstanding;
+  const deductedThisPayroll =
+    toNumber(payroll.advanceDeduction) + toNumber(payroll.carryForwardApplied);
+
+  return Math.max(snapshotOpening - deductedThisPayroll, 0);
+}
+
+async function attachAdvanceCycleOpeningBalance<
+  T extends {
+    employeeId: string;
+    cycleStartDate: Date;
+    cycleEndDate: Date;
+    amount?: unknown;
+    remainingAmount?: unknown;
+    settledAmount?: unknown;
+  },
+>(rows: T[]) {
+  if (rows.length === 0) return rows;
+
+  const cycleKeys = [
+    ...new Map(
+      rows.map((row) => [
+        `${row.employeeId}_${row.cycleStartDate.toISOString()}_${row.cycleEndDate.toISOString()}`,
+        row,
+      ]),
+    ).values(),
+  ];
+  const payrolls = await readPrisma.payroll.findMany({
+    where: {
+      OR: cycleKeys.map((row) => ({
+        employeeId: row.employeeId,
+        periodStart: row.cycleStartDate,
+        periodEnd: row.cycleEndDate,
+      })),
+      status: {
+        in: [...activePayrollStatuses] as any,
+      },
+    },
+    select: {
+      employeeId: true,
+      periodStart: true,
+      periodEnd: true,
+      advanceBreakdown: true,
+      advanceDeduction: true,
+      carryForwardApplied: true,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+  const payrollMap = new Map(
+    payrolls.map((payroll) => [
+      `${payroll.employeeId}_${payroll.periodStart.toISOString()}_${payroll.periodEnd.toISOString()}`,
+      payroll,
+    ]),
+  );
+
+  return rows.map((row) => {
+    const payroll = payrollMap.get(
+      `${row.employeeId}_${row.cycleStartDate.toISOString()}_${row.cycleEndDate.toISOString()}`,
+    );
+    const fallbackOpening = Math.max(
+      toNumber(row.amount),
+      toNumber(row.remainingAmount) + toNumber(row.settledAmount),
+      0,
+    );
+
+    return {
+      ...row,
+      openingAdvanceBalance: payroll
+        ? getOpeningAdvanceBalanceFromPayrollSnapshot(payroll)
+        : fallbackOpening,
+    };
+  });
+}
+
+function attachPayrollOpeningAdvanceBalance<T extends {
+  employeeId: string;
+  periodStart: Date;
+  periodEnd: Date;
+  advanceBreakdown?: unknown;
+  advanceDeduction?: unknown;
+  carryForwardApplied?: unknown;
+}>(
+  rows: T[],
+  fallbackOpeningBalanceMap: Map<string, number>,
+) {
+  return rows.map((row) => {
+    const breakdown = (row.advanceBreakdown as any) ?? {};
+    const hasPayrollAdvanceSnapshot =
+      Array.isArray(breakdown.advances) ||
+      Array.isArray(breakdown.carryForwardApplied?.pendingCarryForwards) ||
+      breakdown.manualOutstandingTotal !== undefined;
+    const snapshotOpeningBalance =
+      getOpeningAdvanceBalanceFromPayrollSnapshot(row);
+    const received = sumBy(
+      ((row as any).__periodAdvances ?? []) as any[],
+      (advance) => toNumber(advance.amount),
+    );
+
+    return {
+      ...row,
+      advanceReceived: received,
+      openingAdvanceBalance:
+        hasPayrollAdvanceSnapshot
+          ? snapshotOpeningBalance
+          : (fallbackOpeningBalanceMap.get(row.employeeId) ?? 0),
+    };
+  });
+}
+
+async function attachPayrollPeriodAdvances<
+  T extends {
+    employeeId: string;
+    periodStart: Date;
+    periodEnd: Date;
+  },
+>(rows: T[]) {
+  if (rows.length === 0) return rows;
+
+  const employeeIds = [...new Set(rows.map((row) => row.employeeId))];
+  const minStart = new Date(
+    Math.min(...rows.map((row) => row.periodStart.getTime())),
+  );
+  const maxEnd = new Date(
+    Math.max(...rows.map((row) => row.periodEnd.getTime())),
+  );
+  const advances = await readPrisma.advancePayment.findMany({
+    where: {
+      employeeId: {
+        in: employeeIds,
+      },
+      date: {
+        gte: minStart,
+        lte: maxEnd,
+      },
+    },
+    select: {
+      employeeId: true,
+      amount: true,
+      date: true,
+    },
+  });
+
+  return rows.map((row) => ({
+    ...row,
+    __periodAdvances: advances.filter(
+      (advance) =>
+        advance.employeeId === row.employeeId &&
+        advance.date >= row.periodStart &&
+        advance.date <= row.periodEnd,
+    ),
+  }));
+}
+
 export class ReportsRepository {
   static async getPayrollSummaryReport(params: {
     from: Date;
@@ -400,9 +669,10 @@ export class ReportsRepository {
         ...paginationArgs(params),
       } as any),
     ]);
+    const dataWithOpeningBalance = await attachAdvanceCycleOpeningBalance(data);
 
     return {
-      data,
+      data: dataWithOpeningBalance,
       summary: {
         totalAdvanceAmount: Number(aggregate._sum?.amount ?? 0),
         totalRemainingAmount: Number(aggregate._sum?.remainingAmount ?? 0),
@@ -452,9 +722,17 @@ export class ReportsRepository {
         ...paginationArgs(params),
       } as any),
     ]);
+    const dataWithPeriodAdvances = await attachPayrollPeriodAdvances(data);
+    const fallbackOpeningBalanceMap = await getOpeningAdvanceBalanceMap(
+      dataWithPeriodAdvances.map((item) => item.employeeId),
+      params.fromDate,
+    );
 
     return {
-      data,
+      data: attachPayrollOpeningAdvanceBalance(
+        dataWithPeriodAdvances,
+        fallbackOpeningBalanceMap,
+      ),
       summary: {
         totalEmployees: employees.length,
         totalPayrollRecords: total,

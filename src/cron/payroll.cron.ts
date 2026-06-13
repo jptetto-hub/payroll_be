@@ -8,6 +8,10 @@ import { getConfiguredTimezone } from "../config/timezone";
 
 const DAILY_CATCH_UP_CRON_EXPRESSION =
   process.env.PAYROLL_CRON_CATCH_UP_EXPRESSION || "5 0 * * *";
+const ENABLE_DAILY_CATCH_UP =
+  process.env.PAYROLL_CRON_ENABLE_DAILY_CATCH_UP === "true";
+const ENABLE_STARTUP_CATCH_UP =
+  process.env.PAYROLL_CRON_RUN_ON_STARTUP === "true";
 const MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION =
   process.env.PAYROLL_MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION || "59 11 * * *";
 
@@ -193,19 +197,34 @@ export const startPayrollCron = async () => {
     },
   );
 
-  cron.schedule(
-    DAILY_CATCH_UP_CRON_EXPRESSION,
-    async () => {
-      try {
-        await enqueuePayrollIfPending({ reason: "DAILY_CATCH_UP" });
-      } catch (error) {
-        logger.error({ error }, "Payroll cron catch-up failed to enqueue job");
-      }
-    },
-    {
-      timezone: cronTimezone,
-    },
-  );
+  if (ENABLE_DAILY_CATCH_UP) {
+    cron.schedule(
+      DAILY_CATCH_UP_CRON_EXPRESSION,
+      async () => {
+        try {
+          const salaryTypes = getDueSalaryTypes(new Date(), cronTimezone);
+
+          if (salaryTypes.length === 0) {
+            logger.info(
+              { reason: "DAILY_CATCH_UP" },
+              "Payroll cron catch-up skipped: no payroll cycle is due today",
+            );
+            return;
+          }
+
+          await enqueuePayrollIfPending({
+            salaryTypes,
+            reason: "DAILY_CATCH_UP",
+          });
+        } catch (error) {
+          logger.error({ error }, "Payroll cron catch-up failed to enqueue job");
+        }
+      },
+      {
+        timezone: cronTimezone,
+      },
+    );
+  }
 
   logger.info(
     {
@@ -213,16 +232,30 @@ export const startPayrollCron = async () => {
       dueExpression: "59 23 * * *",
       manualAdvanceReminderExpression:
         MANUAL_ADVANCE_REMINDER_CRON_EXPRESSION,
-      catchUpExpression: DAILY_CATCH_UP_CRON_EXPRESSION,
+      catchUpEnabled: ENABLE_DAILY_CATCH_UP,
+      catchUpExpression: ENABLE_DAILY_CATCH_UP
+        ? DAILY_CATCH_UP_CRON_EXPRESSION
+        : null,
+      startupCatchUpEnabled: ENABLE_STARTUP_CATCH_UP,
     },
     "Payroll cron scheduled",
   );
 
-  if (process.env.PAYROLL_CRON_RUN_ON_STARTUP !== "false") {
-    void enqueuePayrollIfPending({ reason: "STARTUP_CATCH_UP" }).catch(
-      (error) => {
+  if (ENABLE_STARTUP_CATCH_UP) {
+    const salaryTypes = getDueSalaryTypes(new Date(), cronTimezone);
+
+    if (salaryTypes.length > 0) {
+      void enqueuePayrollIfPending({
+        salaryTypes,
+        reason: "STARTUP_CATCH_UP",
+      }).catch((error) => {
         logger.error({ error }, "Payroll startup catch-up failed");
-      },
-    );
+      });
+    } else {
+      logger.info(
+        { reason: "STARTUP_CATCH_UP" },
+        "Payroll startup catch-up skipped: no payroll cycle is due today",
+      );
+    }
   }
 };

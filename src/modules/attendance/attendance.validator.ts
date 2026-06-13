@@ -19,6 +19,15 @@ const otFieldsSchema = {
   checkOutTime: isoDateTimeSchema,
   otStartTime: isoDateTimeSchema,
   otEndTime: isoDateTimeSchema,
+  otEntries: z
+    .array(
+      z.object({
+        startTime: z.string().datetime("OT start time must be a valid ISO date-time"),
+        endTime: z.string().datetime("OT end time must be a valid ISO date-time"),
+      }),
+    )
+    .max(8, "Maximum 8 OT time ranges are allowed per day")
+    .optional(),
   otHours: z.number().min(0).max(24).optional().nullable(),
   otManualOverride: z.boolean().optional(),
   otOverrideReason: z.string().min(5).max(250).optional().nullable(),

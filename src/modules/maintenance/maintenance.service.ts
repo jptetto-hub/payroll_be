@@ -1,6 +1,14 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 
+const RETENTION_CLEANUP_ENABLED =
+  process.env.RETENTION_CLEANUP_ENABLED === "true";
+const AUDIT_LOG_DELETE_ARCHIVED_ENABLED =
+  process.env.AUDIT_LOG_DELETE_ARCHIVED_ENABLED === "true";
+const AUDIT_LOG_ARCHIVE_BATCH_SIZE = Number(
+  process.env.AUDIT_LOG_ARCHIVE_BATCH_SIZE || 1000,
+);
+
 function daysAgo(days: number) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - days);
@@ -9,7 +17,11 @@ function daysAgo(days: number) {
 
 export class MaintenanceService {
   static async archiveOldAuditLogs() {
-    const retentionDays = Number(process.env.AUDIT_LOG_RETENTION_DAYS || 365);
+    const retentionDays = Number(
+      process.env.AUDIT_LOG_ARCHIVE_AFTER_DAYS ||
+        process.env.AUDIT_LOG_RETENTION_DAYS ||
+        180,
+    );
     const cutoffDate = daysAgo(retentionDays);
 
     const oldLogs = await prisma.auditLog.findMany({
@@ -18,7 +30,7 @@ export class MaintenanceService {
           lt: cutoffDate,
         },
       },
-      take: 1000,
+      take: AUDIT_LOG_ARCHIVE_BATCH_SIZE,
       orderBy: {
         createdAt: "asc",
       },
@@ -28,12 +40,14 @@ export class MaintenanceService {
       return {
         archived: 0,
         deleted: 0,
+        deleteArchivedEnabled: AUDIT_LOG_DELETE_ARCHIVED_ENABLED,
+        retentionDays,
         cutoffDate,
       };
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.auditLogArchive.createMany({
+    const archiveResult = await prisma.$transaction(async (tx) => {
+      const archived = await tx.auditLogArchive.createMany({
         data: oldLogs.map((log) => ({
           id: log.id,
           userId: log.userId,
@@ -55,27 +69,52 @@ export class MaintenanceService {
         skipDuplicates: true,
       });
 
-      await tx.auditLog.deleteMany({
+      if (!AUDIT_LOG_DELETE_ARCHIVED_ENABLED) {
+        return {
+          archived: archived.count,
+          deleted: 0,
+        };
+      }
+
+      const deleted = await tx.auditLog.deleteMany({
         where: {
           id: {
             in: oldLogs.map((log) => log.id),
           },
         },
       });
+
+      return {
+        archived: archived.count,
+        deleted: deleted.count,
+      };
     });
 
     return {
-      archived: oldLogs.length,
-      deleted: oldLogs.length,
+      archived: archiveResult.archived,
+      scanned: oldLogs.length,
+      deleted: archiveResult.deleted,
+      deleteArchivedEnabled: AUDIT_LOG_DELETE_ARCHIVED_ENABLED,
+      retentionDays,
       cutoffDate,
     };
   }
 
-  static async cleanupOldSchedulerRunItems() {
+  static async cleanupOldSchedulerRuns() {
     const retentionDays = Number(
-      process.env.SCHEDULER_ITEM_RETENTION_DAYS || 90,
+      process.env.SCHEDULER_RUN_RETENTION_DAYS ||
+        process.env.SCHEDULER_ITEM_RETENTION_DAYS ||
+        30,
     );
     const cutoffDate = daysAgo(retentionDays);
+
+    const runResult = await prisma.schedulerRun.deleteMany({
+      where: {
+        createdAt: {
+          lt: cutoffDate,
+        },
+      },
+    });
 
     const result = await prisma.schedulerRunItem.deleteMany({
       where: {
@@ -86,18 +125,29 @@ export class MaintenanceService {
     });
 
     return {
-      deleted: result.count,
+      deletedRuns: runResult.count,
+      deletedOrphanItems: result.count,
+      retentionDays,
       cutoffDate,
     };
   }
 
   static async runCleanup() {
+    if (!RETENTION_CLEANUP_ENABLED) {
+      return {
+        enabled: false,
+        message:
+          "Retention cleanup is disabled. Set RETENTION_CLEANUP_ENABLED=true to enable it.",
+      };
+    }
+
     const auditLogs = await this.archiveOldAuditLogs();
-    const schedulerRunItems = await this.cleanupOldSchedulerRunItems();
+    const schedulerRuns = await this.cleanupOldSchedulerRuns();
 
     return {
+      enabled: true,
       auditLogs,
-      schedulerRunItems,
+      schedulerRuns,
     };
   }
 }

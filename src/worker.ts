@@ -5,6 +5,7 @@ import { initSentry, Sentry } from "./config/sentry";
 import { startWorkerHeartbeat } from "./modules/health/worker-heartbeat.service";
 import { startPayrollCron } from "./cron/payroll.cron";
 import { startCloudBackupCron } from "./cron/cloud-backup.cron";
+import { startRetentionCleanupCron } from "./cron/retention-cleanup.cron";
 import { SettingsService } from "./modules/settings/settings.service";
 import { startOrganizationTimezoneSubscriber } from "./config/timezone-sync";
 
@@ -41,6 +42,13 @@ async function bootstrapWorker() {
     await startCloudBackupCron();
   } catch (error) {
     logger.error({ error }, "Cloudflare R2 backup cron failed to start");
+    Sentry.captureException(error);
+  }
+
+  try {
+    await startRetentionCleanupCron();
+  } catch (error) {
+    logger.error({ error }, "Retention cleanup cron failed to start");
     Sentry.captureException(error);
   }
 

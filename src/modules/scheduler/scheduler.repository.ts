@@ -4,6 +4,7 @@ import {
   EmployeeStatus,
   PayrollStatus,
   Prisma,
+  Role,
   SalaryType,
   SchedulerRunItemStatus,
   SchedulerRunStatus,
@@ -12,6 +13,12 @@ import { CacheService } from "../../utils/cache";
 
 const SYSTEM_SETTINGS_CACHE_KEY = "settings:system";
 const SETTINGS_CACHE_TTL = 60 * 10;
+const payrollEmployeeWhere = {
+  status: EmployeeStatus.ACTIVE,
+  role: {
+    in: [Role.USER, Role.ADMIN],
+  },
+};
 
 export type SchedulerTargetPeriod = {
   salaryType: SalaryType;
@@ -23,7 +30,7 @@ export class SchedulerRepository {
   static getActiveEmployees() {
     return prisma.employee.findMany({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...payrollEmployeeWhere,
       },
       select: {
         id: true,
@@ -43,7 +50,7 @@ export class SchedulerRepository {
   static countActiveEmployees(salaryTypes?: SalaryType[]) {
     return prisma.employee.count({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...payrollEmployeeWhere,
         ...(salaryTypes?.length
           ? {
               salaryType: {
@@ -58,7 +65,7 @@ export class SchedulerRepository {
   static countPendingActiveEmployees(targetPeriods: SchedulerTargetPeriod[]) {
     return prisma.employee.count({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...payrollEmployeeWhere,
         OR: targetPeriods.map((period) => ({
           salaryType: period.salaryType,
           payrolls: {
@@ -79,7 +86,7 @@ export class SchedulerRepository {
   }) {
     return prisma.employee.findMany({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...payrollEmployeeWhere,
         ...(params.cursor ? { id: { gt: params.cursor } } : {}),
         OR: params.targetPeriods.map((period) => ({
           salaryType: period.salaryType,
@@ -114,7 +121,7 @@ export class SchedulerRepository {
   }) {
     return prisma.employee.findMany({
       where: {
-        status: EmployeeStatus.ACTIVE,
+        ...payrollEmployeeWhere,
         ...(params.cursor ? { id: { gt: params.cursor } } : {}),
         OR: params.targetPeriods.map((period) => ({
           salaryType: period.salaryType,
@@ -163,7 +170,7 @@ export class SchedulerRepository {
     for (const period of targetPeriods) {
       const employees = await prisma.employee.findMany({
         where: {
-          status: EmployeeStatus.ACTIVE,
+          ...payrollEmployeeWhere,
           salaryType: period.salaryType,
           advanceDeductionMode: AdvanceDeductionMode.MANUAL,
           advances: {

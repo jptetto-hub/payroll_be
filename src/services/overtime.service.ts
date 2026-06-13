@@ -6,6 +6,7 @@ const db = prisma as any;
 
 const roundHours = (value: number) => Math.round(value * 100) / 100;
 const isSunday = (date: Date) => date.getUTCDay() === 0;
+const MS_PER_MINUTE = 60 * 1000;
 
 export const parseDateOnly = (value: string) => {
   const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -175,6 +176,7 @@ export class OvertimeService {
     checkOutTime?: Date | null;
     otStartTime?: Date | null;
     otEndTime?: Date | null;
+    otEntries?: { startTime?: Date | null; endTime?: Date | null }[];
     otManualOverride?: boolean;
     otHours?: number | null;
     otOverrideReason?: string | null;
@@ -182,6 +184,16 @@ export class OvertimeService {
   }) {
     const setting =
       params.setting ?? (await this.getSettingForDate(params.attendanceDate));
+    const attendanceDayStart = new Date(
+      Date.UTC(
+        params.attendanceDate.getUTCFullYear(),
+        params.attendanceDate.getUTCMonth(),
+        params.attendanceDate.getUTCDate(),
+      ),
+    );
+    const attendanceDayEnd = new Date(
+      attendanceDayStart.getTime() + 24 * 60 * 60 * 1000,
+    );
     const standardStart = dateAtTime(params.attendanceDate, setting.workStartTime);
     let standardEnd = dateAtTime(params.attendanceDate, setting.workEndTime);
 
@@ -193,6 +205,7 @@ export class OvertimeService {
     const checkOutTime = params.checkOutTime ?? null;
     const otStartTime = params.otStartTime ?? null;
     const otEndTime = params.otEndTime ?? null;
+    const otEntries = params.otEntries ?? [];
     const manual = Boolean(params.otManualOverride);
     const restDay = isSunday(params.attendanceDate);
 
@@ -206,6 +219,89 @@ export class OvertimeService {
 
     if (otStartTime && otEndTime && otEndTime <= otStartTime) {
       throw new Error("OT end time must be after OT start time");
+    }
+
+    if (otEntries.length > 0) {
+      if (manual) {
+        throw new Error("Multiple OT time ranges cannot be used with manual OT override");
+      }
+
+      if (otEntries.length > 8) {
+        throw new Error("Maximum 8 OT time ranges are allowed per day");
+      }
+
+      const normalizedEntries = otEntries.map((entry, index) => {
+        const startTime = entry.startTime ?? null;
+        const endTime = entry.endTime ?? null;
+
+        if (!startTime || !endTime) {
+          throw new Error(`Both OT start and OT end are required for range ${index + 1}`);
+        }
+
+        if (endTime <= startTime) {
+          throw new Error(`OT end time must be after OT start time for range ${index + 1}`);
+        }
+
+        if (startTime < attendanceDayStart || endTime > attendanceDayEnd) {
+          throw new Error(`OT range ${index + 1} must be within the attendance day`);
+        }
+
+        if (!restDay && startTime < standardEnd && endTime > standardStart) {
+          throw new Error(
+            `OT range ${index + 1} cannot overlap regular working hours ${setting.workStartTime} to ${setting.workEndTime}`,
+          );
+        }
+
+        return {
+          startTime,
+          endTime,
+          minutes: Math.round((endTime.getTime() - startTime.getTime()) / MS_PER_MINUTE),
+        };
+      });
+
+      const sortedEntries = [...normalizedEntries].sort(
+        (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+      );
+
+      for (let index = 1; index < sortedEntries.length; index += 1) {
+        if (sortedEntries[index].startTime < sortedEntries[index - 1].endTime) {
+          throw new Error("OT time ranges cannot overlap each other");
+        }
+      }
+
+      const totalMinutes = sortedEntries.reduce(
+        (sum, entry) => sum + entry.minutes,
+        0,
+      );
+      const maxOtMinutes = restDay ? 24 * 60 : Math.max(0, 24 * 60 - Number(setting.standardMinutes ?? 0));
+
+      if (totalMinutes > maxOtMinutes) {
+        throw new Error(
+          `OT hours cannot exceed available non-working hours for the day (${roundHours(maxOtMinutes / 60)} hours)`,
+        );
+      }
+
+      return {
+        otHours: roundHours(totalMinutes / 60),
+        otStartTime: sortedEntries[0]?.startTime ?? null,
+        otEndTime: sortedEntries[sortedEntries.length - 1]?.endTime ?? null,
+        otManualOverride: false,
+        otOverrideReason: null,
+        otBreakdown: {
+          mode: "MULTI_RANGE",
+          workHourSettingId: setting.id,
+          workStartTime: setting.workStartTime,
+          workEndTime: setting.workEndTime,
+          standardMinutes: setting.standardMinutes,
+          standardStart: standardStart.toISOString(),
+          standardEnd: standardEnd.toISOString(),
+          entries: sortedEntries.map((entry) => ({
+            startTime: entry.startTime.toISOString(),
+            endTime: entry.endTime.toISOString(),
+            hours: roundHours(entry.minutes / 60),
+          })),
+        },
+      };
     }
 
     if (

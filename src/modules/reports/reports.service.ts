@@ -110,7 +110,9 @@ const allInOneExportColumns = [
   { header: "OT Hourly Rate", key: "otHourlyRate", width: 18 },
   { header: "OT Earnings", key: "otEarnings", width: 15 },
   { header: "Gross Salary", key: "grossSalary", width: 15 },
-  { header: "Advance Deduction", key: "advanceDeduction", width: 20 },
+  { header: "Advance Opening Balance", key: "openingAdvanceBalance", width: 26 },
+  { header: "Advance Got", key: "advanceReceived", width: 18 },
+  { header: "Advance Deducted", key: "advanceDeduction", width: 20 },
   { header: "Advance Deduction Mode", key: "advanceDeductionMode", width: 26 },
   { header: "Manual Deduction Amount", key: "manualDeductionAmount", width: 26 },
   { header: "Manual Pending Balance", key: "manualPendingBalance", width: 26 },
@@ -146,36 +148,15 @@ const salaryExportKeys = [
   "payrollStatus",
 ];
 
-const allInOneExportKeys = [
-  "employeeCode",
-  "name",
-  "salaryType",
-  "periodStart",
-  "periodEnd",
-  "standardSalary",
-  "otTotalHours",
-  "otHourlyRate",
-  "otEarnings",
-  "grossSalary",
-  "advanceDeduction",
-  "advanceDeductionMode",
-  "manualDeductionAmount",
-  "manualPendingBalance",
-  "carryForwardApplied",
-  "totalDeduction",
-  "rawFinalSalary",
-  "finalSalary",
-  "carryForwardDeduction",
-  "payrollStatus",
-];
-
 const getAdvanceBreakdown = (p: any) => (p.advanceBreakdown as any) ?? {};
 const getAdvanceDeductionMode = (p: any) =>
   getAdvanceBreakdown(p).advanceDeductionMode ??
   p.employee?.advanceDeductionMode ??
   "AUTO";
 const getManualDeductionAmount = (p: any) =>
-  Number(getAdvanceBreakdown(p).manualDeductionAmount ?? p.advanceDeduction ?? 0);
+  Number(
+    getAdvanceBreakdown(p).manualDeductionAmount ?? p.advanceDeduction ?? 0,
+  );
 const getManualPendingBalance = (p: any) => {
   const breakdown = getAdvanceBreakdown(p);
   const outstanding = Number(breakdown.manualOutstandingTotal ?? 0);
@@ -220,6 +201,8 @@ const formatAllInOne = (p: any) => ({
   otHourlyRate: Number(p.otHourlyRate ?? 0),
   otEarnings: Number(p.otEarnings ?? 0),
   grossSalary: Number(p.grossSalary),
+  openingAdvanceBalance: Number(p.openingAdvanceBalance ?? 0),
+  advanceReceived: Number(p.advanceReceived ?? 0),
   advanceDeduction: Number(p.advanceDeduction),
   advanceDeductionMode: getAdvanceDeductionMode(p),
   manualDeductionAmount:
@@ -233,6 +216,98 @@ const formatAllInOne = (p: any) => ({
   carryForwardDeduction: Number(p.carryForwardDeduction),
   payrollStatus: p.status,
 });
+
+const formatAdvanceForExport = (a: any) => ({
+  "Employee Code": a.employee.employeeCode,
+  Name: a.employee.name,
+  "Salary Type": a.employee.salaryType,
+  "Advance Deduction Mode": a.employee.advanceDeductionMode,
+  "Advance Opening Balance": Number(a.openingAdvanceBalance ?? 0),
+  "Advance Got": Number(a.amount),
+  "Advance Deducted": Number(a.settledAmount ?? 0),
+  "Advance Balance After Deduction": Number(a.remainingAmount ?? 0),
+  "Balance Carried Onward": Number(a.carryForwardAmount ?? 0),
+  "Settlement Status": a.settlementStatus,
+  "Locked By Payroll": a.lockedByPayrollId,
+  Date: formatDate(a.date),
+  "Pay Cycle Type": a.payCycleType,
+  "Cycle Start Date": formatDate(a.cycleStartDate),
+  "Cycle End Date": formatDate(a.cycleEndDate),
+  Settled: a.isSettled ? "Yes" : "No",
+});
+
+const advanceExportKeys = [
+  "Employee Code",
+  "Name",
+  "Salary Type",
+  "Advance Deduction Mode",
+  "Advance Opening Balance",
+  "Advance Got",
+  "Advance Deducted",
+  "Advance Balance After Deduction",
+  "Balance Carried Onward",
+  "Settlement Status",
+  "Locked By Payroll",
+  "Date",
+  "Pay Cycle Type",
+  "Cycle Start Date",
+  "Cycle End Date",
+  "Settled",
+];
+
+const formatAllInOneForExport = (p: any) => {
+  const item = formatAllInOne(p);
+
+  return {
+    "Employee Code": item.employeeCode,
+    Name: item.name,
+    "Salary Type": item.salaryType,
+    "Period Start": item.periodStart,
+    "Period End": item.periodEnd,
+    "Standard Salary": item.standardSalary,
+    "OT Hours": item.otTotalHours,
+    "OT Hourly Rate": item.otHourlyRate,
+    "OT Earnings": item.otEarnings,
+    "Gross Salary": item.grossSalary,
+    "Advance Opening Balance": item.openingAdvanceBalance,
+    "Advance Got": item.advanceReceived,
+    "Advance Deducted": item.advanceDeduction,
+    "Advance Deduction Mode": item.advanceDeductionMode,
+    "Manual Deduction Amount": item.manualDeductionAmount,
+    "Manual Pending Balance": item.manualPendingBalance,
+    "Carry Forward Applied": item.carryForwardApplied,
+    "Total Deduction": item.totalDeduction,
+    "Raw Final Salary": item.rawFinalSalary,
+    "Final Salary": item.finalSalary,
+    "Carry Forward Deduction": item.carryForwardDeduction,
+    "Payroll Status": item.payrollStatus,
+  };
+};
+
+const allInOneHumanExportKeys = [
+  "Employee Code",
+  "Name",
+  "Salary Type",
+  "Period Start",
+  "Period End",
+  "Standard Salary",
+  "OT Hours",
+  "OT Hourly Rate",
+  "OT Earnings",
+  "Gross Salary",
+  "Advance Opening Balance",
+  "Advance Got",
+  "Advance Deducted",
+  "Advance Deduction Mode",
+  "Manual Deduction Amount",
+  "Manual Pending Balance",
+  "Carry Forward Applied",
+  "Total Deduction",
+  "Raw Final Salary",
+  "Final Salary",
+  "Carry Forward Deduction",
+  "Payroll Status",
+];
 
 export class ReportsService {
   static async salary(query: any, authUser: any) {
@@ -293,41 +368,10 @@ export class ReportsService {
       normalizeReportQuery(query, authUser, false),
     );
 
-    const formatted = (result.data as any[]).map((a) => ({
-      employeeCode: a.employee.employeeCode,
-      name: a.employee.name,
-      salaryType: a.employee.salaryType,
-      advanceDeductionMode: a.employee.advanceDeductionMode,
-      amount: Number(a.amount),
-      remainingAmount: Number(a.remainingAmount),
-      settledAmount: Number(a.settledAmount),
-      carryForwardAmount: Number(a.carryForwardAmount),
-      settlementStatus: a.settlementStatus,
-      lockedByPayrollId: a.lockedByPayrollId,
-      date: formatDate(a.date),
-      payCycleType: a.payCycleType,
-      cycleStartDate: formatDate(a.cycleStartDate),
-      cycleEndDate: formatDate(a.cycleEndDate),
-      isSettled: a.isSettled ? "Yes" : "No",
-    }));
-
-    return generateCSV(formatted, [
-      "employeeCode",
-      "name",
-      "salaryType",
-      "advanceDeductionMode",
-      "amount",
-      "remainingAmount",
-      "settledAmount",
-      "carryForwardAmount",
-      "settlementStatus",
-      "lockedByPayrollId",
-      "date",
-      "payCycleType",
-      "cycleStartDate",
-      "cycleEndDate",
-      "isSettled",
-    ]);
+    return generateCSV(
+      (result.data as any[]).map(formatAdvanceForExport),
+      advanceExportKeys,
+    );
   }
 
   static async salaryExportExcel(query: any, authUser: any) {
@@ -375,24 +419,6 @@ export class ReportsService {
       normalizeReportQuery(query, authUser, false),
     );
 
-    const formatted = (result.data as any[]).map((a) => ({
-      employeeCode: a.employee.employeeCode,
-      name: a.employee.name,
-      salaryType: a.employee.salaryType,
-      advanceDeductionMode: a.employee.advanceDeductionMode,
-      amount: Number(a.amount),
-      remainingAmount: Number(a.remainingAmount),
-      settledAmount: Number(a.settledAmount),
-      carryForwardAmount: Number(a.carryForwardAmount),
-      settlementStatus: a.settlementStatus,
-      lockedByPayrollId: a.lockedByPayrollId,
-      date: formatDate(a.date),
-      payCycleType: a.payCycleType,
-      cycleStartDate: formatDate(a.cycleStartDate),
-      cycleEndDate: formatDate(a.cycleEndDate),
-      isSettled: a.isSettled ? "Yes" : "No",
-    }));
-
     return generateExcelBuffer(
       "Advance Report",
       [
@@ -400,10 +426,11 @@ export class ReportsService {
         { header: "Name", key: "name", width: 25 },
         { header: "Salary Type", key: "salaryType", width: 15 },
         { header: "Advance Deduction Mode", key: "advanceDeductionMode", width: 26 },
-        { header: "Amount", key: "amount", width: 15 },
-        { header: "Remaining Amount", key: "remainingAmount", width: 20 },
-        { header: "Settled Amount", key: "settledAmount", width: 18 },
-        { header: "Carry Forward Amount", key: "carryForwardAmount", width: 24 },
+        { header: "Advance Opening Balance", key: "openingAdvanceBalance", width: 26 },
+        { header: "Advance Got", key: "amount", width: 15 },
+        { header: "Advance Deducted", key: "settledAmount", width: 18 },
+        { header: "Advance Balance After Deduction", key: "remainingAmount", width: 30 },
+        { header: "Balance Carried Onward", key: "carryForwardAmount", width: 24 },
         { header: "Settlement Status", key: "settlementStatus", width: 22 },
         { header: "Locked By Payroll", key: "lockedByPayrollId", width: 38 },
         { header: "Date", key: "date", width: 15 },
@@ -412,7 +439,24 @@ export class ReportsService {
         { header: "Cycle End Date", key: "cycleEndDate", width: 18 },
         { header: "Settled", key: "isSettled", width: 12 },
       ],
-      formatted,
+      (result.data as any[]).map((a) => ({
+        employeeCode: a.employee.employeeCode,
+        name: a.employee.name,
+        salaryType: a.employee.salaryType,
+        advanceDeductionMode: a.employee.advanceDeductionMode,
+        openingAdvanceBalance: Number(a.openingAdvanceBalance ?? 0),
+        amount: Number(a.amount),
+        remainingAmount: Number(a.remainingAmount),
+        settledAmount: Number(a.settledAmount),
+        carryForwardAmount: Number(a.carryForwardAmount),
+        settlementStatus: a.settlementStatus,
+        lockedByPayrollId: a.lockedByPayrollId,
+        date: formatDate(a.date),
+        payCycleType: a.payCycleType,
+        cycleStartDate: formatDate(a.cycleStartDate),
+        cycleEndDate: formatDate(a.cycleEndDate),
+        isSettled: a.isSettled ? "Yes" : "No",
+      })),
     );
   }
 
@@ -433,8 +477,8 @@ export class ReportsService {
     );
 
     return generateCSV(
-      (result.data as any[]).map(formatAllInOne),
-      allInOneExportKeys,
+      (result.data as any[]).map(formatAllInOneForExport),
+      allInOneHumanExportKeys,
     );
   }
 
