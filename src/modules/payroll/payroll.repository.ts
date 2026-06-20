@@ -14,6 +14,8 @@ const payrollListSelect = {
   standardSalary: true,
   otTotalHours: true,
   otEarnings: true,
+  lateMinutes: true,
+  lateDeduction: true,
   advanceDeduction: true,
   finalSalary: true,
   version: true,

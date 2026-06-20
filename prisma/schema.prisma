@@ -118,6 +118,7 @@ model Attendance {
   otManualOverride  Boolean          @default(false)
   otOverrideReason  String?
   otBreakdown       Json?
+  lateMinutes       Int              @default(0)
   employee          Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, date])
@@ -232,6 +233,8 @@ model Payroll {
   otHourlyRate            Decimal                  @default(0) @db.Decimal(12, 2)
   otEarnings              Decimal                  @default(0) @db.Decimal(12, 2)
   overtimeBreakdown       Json?
+  lateMinutes             Int                      @default(0)
+  lateDeduction           Decimal                  @default(0) @db.Decimal(12, 2)
   activePayrollKey        String?                  @unique
   ledgerEntries           LedgerEntry[]
   employee                Employee                 @relation(fields: [employeeId], references: [id], onDelete: Cascade)

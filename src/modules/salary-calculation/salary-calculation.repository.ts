@@ -58,6 +58,7 @@ export class SalaryCalculationRepository {
         otManualOverride: true,
         otOverrideReason: true,
         otBreakdown: true,
+        lateMinutes: true,
       },
       orderBy: {
         date: "asc",
@@ -140,6 +141,22 @@ export class SalaryCalculationRepository {
         date: true,
       },
       orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
+  static getUnlockedManualDeductionsBefore(
+    employeeId: string,
+    periodStart: Date,
+  ) {
+    return prisma.advanceManualDeduction.findMany({
+      where: {
+        employeeId,
+        periodEnd: {
+          lt: periodStart,
+        },
+        lockedByPayrollId: null,
+      },
+      orderBy: [{ periodStart: "asc" }, { createdAt: "asc" }],
     });
   }
 

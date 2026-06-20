@@ -200,6 +200,12 @@ export class OvertimeService {
     if (standardEnd <= standardStart) {
       standardEnd = new Date(standardEnd.getTime() + 24 * 60 * 60 * 1000);
     }
+    // On a regular workday, OT after a shift may continue into the following
+    // morning, but it must end before that day's regular work starts.
+    const nextWorkStart = dateAtTime(attendanceDayEnd, setting.workStartTime);
+    const otEndLimit = isSunday(params.attendanceDate)
+      ? attendanceDayEnd
+      : nextWorkStart;
 
     const checkInTime = params.checkInTime ?? null;
     const checkOutTime = params.checkOutTime ?? null;
@@ -242,8 +248,10 @@ export class OvertimeService {
           throw new Error(`OT end time must be after OT start time for range ${index + 1}`);
         }
 
-        if (startTime < attendanceDayStart || endTime > attendanceDayEnd) {
-          throw new Error(`OT range ${index + 1} must be within the attendance day`);
+        if (startTime < attendanceDayStart || endTime > otEndLimit) {
+          throw new Error(
+            `OT range ${index + 1} must end before the next regular workday starts`,
+          );
         }
 
         if (!restDay && startTime < standardEnd && endTime > standardStart) {
@@ -314,6 +322,10 @@ export class OvertimeService {
       throw new Error(
         `OT time cannot overlap regular working hours ${setting.workStartTime} to ${setting.workEndTime}`,
       );
+    }
+
+    if (otEndTime && otEndTime > otEndLimit) {
+      throw new Error("OT must end before the next regular workday starts");
     }
 
     if (manual) {

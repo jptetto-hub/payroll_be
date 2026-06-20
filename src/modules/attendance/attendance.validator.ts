@@ -31,6 +31,7 @@ const otFieldsSchema = {
   otHours: z.number().min(0).max(24).optional().nullable(),
   otManualOverride: z.boolean().optional(),
   otOverrideReason: z.string().min(5).max(250).optional().nullable(),
+  lateMinutes: z.number().int().min(0).max(1440).optional(),
 };
 
 export const createAttendanceSchema = z.object({

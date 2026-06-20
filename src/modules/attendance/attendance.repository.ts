@@ -164,6 +164,7 @@ export class AttendanceRepository {
     otManualOverride?: boolean;
     otOverrideReason?: string | null;
     otBreakdown?: any;
+    lateMinutes?: number;
   }) {
     return prisma.attendance.create({
       data,
@@ -183,6 +184,7 @@ export class AttendanceRepository {
       otManualOverride?: boolean;
       otOverrideReason?: string | null;
       otBreakdown?: any;
+      lateMinutes?: number;
     }[],
   ) {
     return prisma.attendance.createManyAndReturn({
@@ -202,6 +204,7 @@ export class AttendanceRepository {
     otManualOverride?: boolean;
     otOverrideReason?: string | null;
     otBreakdown?: any;
+    lateMinutes?: number;
   }) {
     return prisma.attendance.upsert({
       where: {
@@ -220,6 +223,7 @@ export class AttendanceRepository {
         otManualOverride: data.otManualOverride,
         otOverrideReason: data.otOverrideReason,
         otBreakdown: data.otBreakdown,
+        lateMinutes: data.lateMinutes,
       }),
       create: data,
     });
@@ -266,6 +270,7 @@ export class AttendanceRepository {
         otEndTime: true,
         otManualOverride: true,
         otOverrideReason: true,
+        lateMinutes: true,
         lockedByPayrollId: true,
         createdAt: true,
         updatedAt: true,
@@ -322,6 +327,7 @@ export class AttendanceRepository {
           otEndTime: true,
           otManualOverride: true,
           otOverrideReason: true,
+          lateMinutes: true,
           lockedByPayrollId: true,
           createdAt: true,
           updatedAt: true,
@@ -473,6 +479,7 @@ export class AttendanceRepository {
       otManualOverride?: boolean;
       otOverrideReason?: string | null;
       otBreakdown?: any;
+      lateMinutes?: number;
     }[],
   ) {
     if (records.length === 0) {
@@ -490,7 +497,8 @@ export class AttendanceRepository {
         ${record.otHours ?? 0}::numeric,
         ${record.otManualOverride ?? false}::boolean,
         ${record.otOverrideReason ?? null}::text,
-        ${JSON.stringify(record.otBreakdown ?? null)}::jsonb
+        ${JSON.stringify(record.otBreakdown ?? null)}::jsonb,
+        ${record.lateMinutes ?? 0}::integer
       )`,
     );
 
@@ -506,6 +514,7 @@ export class AttendanceRepository {
         "otManualOverride" = incoming."otManualOverride",
         "otOverrideReason" = incoming."otOverrideReason",
         "otBreakdown" = incoming."otBreakdown",
+        "lateMinutes" = incoming."lateMinutes",
         "updatedAt" = CURRENT_TIMESTAMP
       FROM (
         VALUES ${Prisma.join(rows)}
@@ -519,7 +528,8 @@ export class AttendanceRepository {
         "otHours",
         "otManualOverride",
         "otOverrideReason",
-        "otBreakdown"
+        "otBreakdown",
+        "lateMinutes"
       )
       WHERE attendance.id = incoming.id
       RETURNING attendance.*

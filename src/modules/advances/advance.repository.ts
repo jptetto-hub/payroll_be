@@ -415,6 +415,22 @@ export class AdvanceRepository {
     });
   }
 
+  static getUnlockedManualDeductionsBefore(
+    employeeId: string,
+    periodStart: Date,
+  ) {
+    return prisma.advanceManualDeduction.findMany({
+      where: {
+        employeeId,
+        periodEnd: {
+          lt: periodStart,
+        },
+        lockedByPayrollId: null,
+      },
+      orderBy: [{ periodStart: "asc" }, { createdAt: "asc" }],
+    });
+  }
+
   static getAdvanceHistoryUntil(employeeId: string, periodEnd: Date) {
     return prisma.advancePayment.findMany({
       where: {

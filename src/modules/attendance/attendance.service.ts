@@ -133,6 +133,7 @@ type AttendanceOtInput = {
   otHours?: number | null;
   otManualOverride?: boolean;
   otOverrideReason?: string | null;
+  lateMinutes?: number;
 };
 
 const parseOptionalDateTime = (value?: string | Date | null) => {
@@ -161,7 +162,7 @@ const buildAttendancePayload = async (
   }));
   const setting = settings
     ? OvertimeService.resolveSettingFromList(settings, attendanceDate)
-    : undefined;
+    : await OvertimeService.getSettingForDate(attendanceDate);
   const ot = await OvertimeService.calculateForAttendance({
     attendanceDate,
     checkInTime,
@@ -176,13 +177,30 @@ const buildAttendancePayload = async (
     ...(input.otOverrideReason !== undefined && {
       otOverrideReason: input.otOverrideReason,
     }),
-    ...(setting && { setting }),
+    setting,
   });
+  const lateMinutes = Number(input.lateMinutes ?? 0);
+
+  if (!Number.isInteger(lateMinutes) || lateMinutes < 0) {
+    throw new Error("Late deduction must be a whole number of minutes");
+  }
+
+  if (lateMinutes > 0) {
+    if (isSunday(attendanceDate)) {
+      throw new Error("Late deduction cannot be added on a Sunday rest day");
+    }
+
+    const standardMinutes = Number(setting?.standardMinutes ?? 0);
+    if (lateMinutes > standardMinutes) {
+      throw new Error("Late deduction must be within the regular working hours");
+    }
+  }
 
   return {
     checkInTime,
     checkOutTime,
     ...ot,
+    lateMinutes,
   };
 };
 
@@ -752,6 +770,9 @@ export class AttendanceService {
           hasOwn(data, "otOverrideReason")
             ? data.otOverrideReason
             : (attendance as any).otOverrideReason ?? null,
+        lateMinutes: hasOwn(data, "lateMinutes")
+          ? data.lateMinutes
+          : Number((attendance as any).lateMinutes ?? 0),
       })),
     });
 
@@ -899,6 +920,9 @@ export class AttendanceService {
               hasOwn(record, "otOverrideReason")
                 ? record.otOverrideReason
                 : (attendance as any).otOverrideReason ?? null,
+            lateMinutes: hasOwn(record, "lateMinutes")
+              ? record.lateMinutes
+              : Number((attendance as any).lateMinutes ?? 0),
           },
           settings,
         )),

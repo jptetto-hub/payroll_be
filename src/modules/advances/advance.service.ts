@@ -62,6 +62,43 @@ const toOptionalMoneyNumber = (value: unknown) =>
 const ADVANCE_READ_CACHE_PREFIX = "advance-read";
 const ADVANCE_READ_CACHE_TTL = 30;
 
+const applyUnlockedManualDeductions = <T extends {
+  remainingAmount: unknown;
+  settledAmount?: unknown;
+  isSettled?: boolean;
+}>(
+  advances: T[],
+  manualDeductions: Array<{ amount: unknown }>,
+) => {
+  const adjustedAdvances = advances.map((advance) => ({
+    ...advance,
+    remainingAmount: toMoneyNumber(advance.remainingAmount),
+    settledAmount: toMoneyNumber(advance.settledAmount),
+  }));
+
+  for (const manualDeduction of manualDeductions) {
+    let remainingDeduction = toMoneyNumber(manualDeduction.amount);
+
+    for (const advance of adjustedAdvances) {
+      if (remainingDeduction <= 0) break;
+
+      const available = toMoneyNumber(advance.remainingAmount);
+      const appliedAmount = roundMoney(Math.min(available, remainingDeduction));
+
+      if (appliedAmount <= 0) continue;
+
+      advance.remainingAmount = roundMoney(available - appliedAmount);
+      advance.settledAmount = roundMoney(
+        toMoneyNumber(advance.settledAmount) + appliedAmount,
+      );
+      advance.isSettled = advance.remainingAmount <= 0;
+      remainingDeduction = roundMoney(remainingDeduction - appliedAmount);
+    }
+  }
+
+  return adjustedAdvances;
+};
+
 const invalidateAdvanceReadCaches = () => {
   void Promise.all([
     CacheService.delByPattern("dashboard:*"),
@@ -864,11 +901,28 @@ export class AdvanceService {
       throw new Error("periodStart cannot be greater than periodEnd");
     }
 
-    const [manualDeduction, outstandingAdvances, advanceHistory] = await Promise.all([
+    const [
+      manualDeduction,
+      outstandingAdvances,
+      advanceHistory,
+      unlockedPriorManualDeductions,
+    ] = await Promise.all([
       AdvanceRepository.getManualDeduction(employee.id, periodStart, periodEnd),
       AdvanceRepository.getOutstandingAdvances(employee.id, periodEnd),
       AdvanceRepository.getAdvanceHistoryUntil(employee.id, periodEnd),
+      AdvanceRepository.getUnlockedManualDeductionsBefore(
+        employee.id,
+        periodStart,
+      ),
     ]);
+    const effectiveOutstandingAdvances = applyUnlockedManualDeductions(
+      outstandingAdvances,
+      unlockedPriorManualDeductions,
+    ).filter((advance) => Number(advance.remainingAmount) > 0);
+    const effectiveAdvanceHistory = applyUnlockedManualDeductions(
+      advanceHistory,
+      unlockedPriorManualDeductions,
+    );
     const payrollSnapshot = manualDeduction?.lockedByPayrollId
       ? await AdvanceRepository.getPayrollSnapshot(manualDeduction.lockedByPayrollId)
       : null;
@@ -895,24 +949,24 @@ export class AdvanceService {
           )
         : null;
     const outstandingTotal = roundMoney(
-      outstandingAdvances.reduce(
+      effectiveOutstandingAdvances.reduce(
         (sum, advance) => sum + Number(advance.remainingAmount),
         0,
       ),
     );
     const totalAdvanceReceived = roundMoney(
-      advanceHistory.reduce(
+      effectiveAdvanceHistory.reduce(
         (sum, advance) => sum + Number(advance.amount),
         0,
       ),
     );
     const totalAdvanceDeducted = roundMoney(
-      advanceHistory.reduce(
+      effectiveAdvanceHistory.reduce(
         (sum, advance) => sum + Number(advance.settledAmount ?? 0),
         0,
       ),
     );
-    const currentCycleAdvances = advanceHistory.filter(
+    const currentCycleAdvances = effectiveAdvanceHistory.filter(
       (advance) =>
         advance.date >= periodStart &&
         advance.date <= periodEnd,
@@ -991,7 +1045,7 @@ export class AdvanceService {
       totalAdvanceReceived,
       totalAdvanceDeducted,
       balanceAfterSavedDeduction,
-      outstandingAdvances: advanceHistory,
+      outstandingAdvances: effectiveAdvanceHistory,
       currentCycleAdvances,
     };
   }
@@ -1052,12 +1106,20 @@ export class AdvanceService {
       throw new Error("Manual deduction is already locked by generated payroll");
     }
 
-    const outstandingAdvances = await AdvanceRepository.getOutstandingAdvances(
-      employee.id,
-      periodEnd,
-    );
+    const [outstandingAdvances, unlockedPriorManualDeductions] =
+      await Promise.all([
+        AdvanceRepository.getOutstandingAdvances(employee.id, periodEnd),
+        AdvanceRepository.getUnlockedManualDeductionsBefore(
+          employee.id,
+          periodStart,
+        ),
+      ]);
+    const effectiveOutstandingAdvances = applyUnlockedManualDeductions(
+      outstandingAdvances,
+      unlockedPriorManualDeductions,
+    ).filter((advance) => Number(advance.remainingAmount) > 0);
     const outstandingTotal = roundMoney(
-      outstandingAdvances.reduce(
+      effectiveOutstandingAdvances.reduce(
         (sum, advance) => sum + Number(advance.remainingAmount),
         0,
       ),

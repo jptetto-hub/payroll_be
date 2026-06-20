@@ -98,6 +98,41 @@ const allocateManualAdvanceDeduction = (
   return allocatedAdvances;
 };
 
+const applyUnlockedManualDeductions = (
+  advances: any[],
+  manualDeductions: Array<{ amount: unknown }>,
+) => {
+  const adjustedAdvances = advances.map((advance) => ({
+    ...advance,
+    remainingAmount: roundMoney(Number(advance.remainingAmount ?? 0)),
+    settledAmount: roundMoney(Number(advance.settledAmount ?? 0)),
+  }));
+
+  for (const manualDeduction of manualDeductions) {
+    let remainingDeduction = roundMoney(Number(manualDeduction.amount ?? 0));
+
+    for (const advance of adjustedAdvances) {
+      if (remainingDeduction <= 0) break;
+
+      const available = roundMoney(Number(advance.remainingAmount ?? 0));
+      const appliedAmount = roundMoney(Math.min(available, remainingDeduction));
+
+      if (appliedAmount <= 0) continue;
+
+      advance.remainingAmount = roundMoney(available - appliedAmount);
+      advance.settledAmount = roundMoney(
+        Number(advance.settledAmount ?? 0) + appliedAmount,
+      );
+      advance.isSettled = advance.remainingAmount <= 0;
+      remainingDeduction = roundMoney(remainingDeduction - appliedAmount);
+    }
+  }
+
+  return adjustedAdvances.filter(
+    (advance) => Number(advance.remainingAmount) > 0,
+  );
+};
+
 type SalaryPreviewEmployee = {
   id: string;
   employeeCode: string;
@@ -150,6 +185,8 @@ const buildPreviewFromPayrollSnapshot = (
       otHours: toNumber(item.otHours),
       otHourlyRate: toNumber(item.otHourlyRate),
       otEarnings: toNumber(item.otEarnings),
+      lateMinutes: toNumber(item.lateMinutes),
+      lateDeduction: toNumber(item.lateDeduction),
       grossSalary: toNumber(item.grossSalary),
     }),
   );
@@ -157,6 +194,8 @@ const buildPreviewFromPayrollSnapshot = (
   const otTotalHours = toNumber(payroll.otTotalHours);
   const otHourlyRate = toNumber(payroll.otHourlyRate);
   const otEarnings = toNumber(payroll.otEarnings);
+  const lateMinutes = toNumber(payroll.lateMinutes);
+  const lateDeduction = toNumber(payroll.lateDeduction);
   const advanceDeduction = toNumber(payroll.advanceDeduction);
   const carryForwardApplied = toNumber(payroll.carryForwardApplied);
   const totalDeduction = toNumber(payroll.totalDeduction);
@@ -190,6 +229,8 @@ const buildPreviewFromPayrollSnapshot = (
       ),
       otTotalHours,
       otEarnings,
+      lateMinutes,
+      lateDeduction,
       effectivePeriodStart: attendanceBreakdown.effectivePeriodStart ??
         formatDate(effectivePeriodStart),
       effectivePeriodEnd: attendanceBreakdown.effectivePeriodEnd ??
@@ -216,6 +257,8 @@ const buildPreviewFromPayrollSnapshot = (
       otTotalHours,
       otHourlyRate,
       otEarnings,
+      lateMinutes,
+      lateDeduction,
       segments: overtimeBreakdown.segments ?? salaryBreakdown.map((item) => ({
         salaryHistoryId: item.salaryHistoryId,
         segmentStart: item.segmentStart,
@@ -231,6 +274,8 @@ const buildPreviewFromPayrollSnapshot = (
       otTotalHours,
       otHourlyRate,
       otEarnings,
+      lateMinutes,
+      lateDeduction,
       advanceDeduction,
       carryForwardApplied,
       totalDeduction,
@@ -339,6 +384,7 @@ export class SalaryCalculationService {
       pendingCarryForwards,
       unprocessedEarlierAdvances,
       manualDeduction,
+      unlockedPriorManualDeductions,
     ] = await Promise.all([
       SalaryCalculationRepository.getSalaryHistories(
         data.employeeId,
@@ -393,8 +439,20 @@ export class SalaryCalculationService {
               periodEnd,
             )
         : Promise.resolve(null),
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL &&
+      !recalculationAdvanceBreakdown
+        ? SalaryCalculationRepository.getUnlockedManualDeductionsBefore(
+            data.employeeId,
+            periodStart,
+          )
+        : Promise.resolve([]),
     ]);
     timer.checkpoint("payroll inputs fetch");
+    const effectiveAdvances =
+      advanceDeductionMode === AdvanceDeductionMode.MANUAL &&
+      !recalculationAdvanceBreakdown
+        ? applyUnlockedManualDeductions(advances, unlockedPriorManualDeductions)
+        : advances;
 
     if (
       advanceDeductionMode === AdvanceDeductionMode.AUTO &&
@@ -470,6 +528,8 @@ export class SalaryCalculationService {
       let otHours = 0;
       let otEarnings = 0;
       let otWeightedRateTotal = 0;
+      let lateMinutes = 0;
+      let lateDeduction = 0;
 
       for (const formattedDate of workingDates) {
         const attendance = attendanceMap.get(formattedDate);
@@ -484,6 +544,25 @@ export class SalaryCalculationService {
         }
 
         attendedDays += getAttendanceValue(status);
+
+        const dailyLateMinutes = Number((attendance as any)?.lateMinutes ?? 0);
+        if (dailyLateMinutes > 0) {
+          const workDate = new Date(`${formattedDate}T00:00:00.000Z`);
+          const workHourSetting = OvertimeService.resolveSettingFromList(
+            workHourSettings,
+            workDate,
+          );
+          const dailyHours = Math.max(
+            Number(workHourSetting.standardMinutes) / 60,
+            1,
+          );
+          const dailyRate =
+            (Number(salary.salaryAmount) / cycleWorkingDays) / dailyHours;
+          lateMinutes += dailyLateMinutes;
+          lateDeduction = roundMoney(
+            lateDeduction + (dailyRate * dailyLateMinutes) / 60,
+          );
+        }
 
         const dailyOtHours = Number((attendance as any)?.otHours ?? 0);
 
@@ -568,6 +647,8 @@ export class SalaryCalculationService {
         otHours,
         otHourlyRate,
         otEarnings,
+        lateMinutes,
+        lateDeduction,
         grossSalary: roundMoney(segmentGrossSalary + otEarnings),
       });
     }
@@ -604,11 +685,15 @@ export class SalaryCalculationService {
     );
     const otHourlyRate =
       otTotalHours > 0 ? roundMoney(otEarnings / otTotalHours) : 0;
+    const lateMinutes = segments.reduce((sum, item) => sum + item.lateMinutes, 0);
+    const lateDeduction = roundMoney(
+      segments.reduce((sum, item) => sum + item.lateDeduction, 0),
+    );
     const grossSalary = roundMoney(
       standardSalary + otEarnings,
     );
     const manualOutstandingTotal = roundMoney(
-      advances.reduce(
+      effectiveAdvances.reduce(
         (sum: number, item: any) => sum + Number(item.remainingAmount),
         0,
       ),
@@ -620,10 +705,10 @@ export class SalaryCalculationService {
     const calculationAdvances =
       advanceDeductionMode === AdvanceDeductionMode.MANUAL
         ? allocateManualAdvanceDeduction(
-            advances,
+            effectiveAdvances,
             Math.min(manualRequestedDeduction, manualOutstandingTotal),
           )
-        : advances;
+        : effectiveAdvances;
 
     const invalidAdvances = calculationAdvances.filter(
       (item: any) => item.payCycleType !== employee.salaryType,
@@ -668,15 +753,15 @@ export class SalaryCalculationService {
 
     if (
       advanceDeductionMode === AdvanceDeductionMode.MANUAL &&
-      advanceDeduction > grossSalary
+      advanceDeduction > grossSalary - lateDeduction
     ) {
       throw new Error(
-        `Manual advance deduction cannot exceed payable salary ${grossSalary}. You can deduct up to ${grossSalary} for this cycle.`,
+        `Manual advance deduction cannot exceed payable salary after late deductions. You can deduct up to ${roundMoney(Math.max(grossSalary - lateDeduction, 0))} for this cycle.`,
       );
     }
 
     let remainingGrossForCarryForward = roundMoney(
-      grossSalary - advanceDeduction,
+      grossSalary - lateDeduction - advanceDeduction,
     );
     let carryForwardApplied = 0;
     const appliedCarryForwards = [];
@@ -719,7 +804,9 @@ export class SalaryCalculationService {
     }
 
     carryForwardApplied = roundMoney(carryForwardApplied);
-    const totalDeduction = roundMoney(advanceDeduction + carryForwardApplied);
+    const totalDeduction = roundMoney(
+      advanceDeduction + carryForwardApplied + lateDeduction,
+    );
     const rawFinalSalary = roundMoney(grossSalary - totalDeduction);
     const finalSalary =
       rawFinalSalary < 0 ? 0 : roundFinalSalary(rawFinalSalary);
@@ -749,6 +836,8 @@ export class SalaryCalculationService {
         attendedDays,
         otTotalHours,
         otEarnings,
+        lateMinutes,
+        lateDeduction,
         effectivePeriodStart: formatDate(effectivePeriodStart),
         effectivePeriodEnd: formatDate(effectivePeriodEnd),
         joinedDuringCycle,
@@ -778,6 +867,8 @@ export class SalaryCalculationService {
           otHours: item.otHours,
           otHourlyRate: item.otHourlyRate,
           otEarnings: item.otEarnings,
+          lateMinutes: item.lateMinutes,
+          lateDeduction: item.lateDeduction,
         })),
       },
       result: {
@@ -786,6 +877,8 @@ export class SalaryCalculationService {
         otTotalHours,
         otHourlyRate,
         otEarnings,
+        lateMinutes,
+        lateDeduction,
         advanceDeduction,
         carryForwardApplied,
         totalDeduction,
